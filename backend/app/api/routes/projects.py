@@ -1,0 +1,258 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.deps import get_db
+from app.core.auth_deps import get_current_user
+
+from app.schemas.project import ProjectCreate, ProjectPublic, ProjectListItem, ProjectMemberPublic, ProjectUpdate
+from app.schemas.member import MemberAddRequest, MemberRoleUpdate, ProjectMemberOut
+
+from app.services.users_service import get_user_by_email
+from app.services.projects_service import (
+    create_project,
+    add_member,
+    get_project_by_id,
+    list_projects_for_user,
+    list_members,
+    get_member_role,
+    is_member,
+    get_project_member,
+    count_owners,
+    exists_project_with_title_for_owner,
+    exists_project_with_title_for_owner_excluding
+)
+from app.services.project_delete_service import delete_project_cascade
+from app.models.user import User
+from app.models.task import Task
+from app.models.task_assignment import TaskAssignment
+from app.models.scheduled_block import ScheduledBlock
+from app.services.notification_service import notify_member_added
+
+router = APIRouter(prefix="/projects", tags=["projects"])
+
+ALLOWED_ROLES = {"OWNER", "ADMIN", "MEMBER"}
+
+
+def require_owner(db: Session, project_id: int, user_id: int):
+    role = get_member_role(db, project_id, user_id)
+    if role != "OWNER":
+        raise HTTPException(status_code=403, detail="Only OWNER can manage project")
+
+
+@router.post("", response_model=ProjectPublic, status_code=201)
+def create_new_project(
+    payload: ProjectCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # Prevent duplicate project title for same owner
+    if exists_project_with_title_for_owner(db, current_user.id, payload.title):
+        raise HTTPException(status_code=400, detail="You already have a project with this title")
+
+    project = create_project(db, payload.title, payload.description, current_user.id)
+    add_member(db, project.id, current_user.id, role="OWNER")
+    return project
+
+
+@router.get("", response_model=list[ProjectListItem])
+def my_projects(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    rows = list_projects_for_user(db, current_user.id)
+
+    result: list[ProjectListItem] = []
+    for project, member in rows:
+        result.append(
+            ProjectListItem(
+                id=project.id,
+                title=project.title,
+                description=project.description,
+                role=member.role,
+                created_at=project.created_at,
+            )
+        )
+    return result
+
+
+@router.get("/{project_id}", response_model=ProjectPublic)
+def get_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if not is_member(db, project_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Not a project member")
+
+    project = get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return project
+
+
+@router.get("/{project_id}/members", response_model=list[ProjectMemberPublic])
+def project_members(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if not is_member(db, project_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Not a project member")
+
+    members = list_members(db, project_id)
+    user_ids = [member.user_id for member in members]
+    users = db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+    users_by_id = {user.id: user for user in users}
+
+    return [
+        ProjectMemberPublic(
+            user_id=member.user_id,
+            name=users_by_id.get(member.user_id).name if users_by_id.get(member.user_id) else None,
+            email=users_by_id.get(member.user_id).email if users_by_id.get(member.user_id) else None,
+            role=member.role,
+            joined_at=member.joined_at,
+        )
+        for member in members
+    ]
+
+
+@router.post("/{project_id}/members", response_model=ProjectMemberOut, status_code=201)
+def add_project_member(
+    project_id: int,
+    payload: MemberAddRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    require_owner(db, project_id, current_user.id)
+
+    user = get_user_by_email(db, payload.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = get_project_member(db, project_id, user.id)
+    if existing:
+        raise HTTPException(status_code=400, detail="User is already a project member")
+
+    role = payload.role
+    if role not in ALLOWED_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+    member = add_member(db, project_id, user.id, role=role)
+    project = get_project_by_id(db, project_id)
+    if project:
+        notify_member_added(db, project, user.id, current_user.name or current_user.email)
+    return member
+
+
+@router.patch("/{project_id}/members/{user_id}", response_model=ProjectMemberOut)
+def change_member_role(
+    project_id: int,
+    user_id: int,
+    payload: MemberRoleUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    require_owner(db, project_id, current_user.id)
+
+    member = get_project_member(db, project_id, user_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    new_role = payload.role
+    if new_role not in ALLOWED_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+    if member.role == "OWNER" and new_role != "OWNER":
+        if count_owners(db, project_id) <= 1:
+            raise HTTPException(status_code=400, detail="Project must have at least one OWNER")
+
+    member.role = new_role
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+@router.delete("/{project_id}/members/{user_id}", status_code=204)
+def remove_project_member(
+    project_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    require_owner(db, project_id, current_user.id)
+
+    member = get_project_member(db, project_id, user_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if member.role == "OWNER":
+        if count_owners(db, project_id) <= 1:
+            raise HTTPException(status_code=400, detail="Project must have at least one OWNER")
+
+    task_ids = [tid for (tid,) in db.query(Task.id).filter(Task.project_id == project_id).all()]
+    if task_ids:
+        db.query(ScheduledBlock).filter(
+            ScheduledBlock.project_id == project_id,
+            ScheduledBlock.user_id == user_id,
+        ).delete()
+        db.query(TaskAssignment).filter(
+            TaskAssignment.user_id == user_id,
+            TaskAssignment.task_id.in_(task_ids),
+        ).delete(synchronize_session=False)
+
+    db.delete(member)
+    db.commit()
+    return None
+
+
+@router.delete("/{project_id}", status_code=204)
+def delete_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    project = get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not is_member(db, project_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Not a project member")
+
+    require_owner(db, project_id, current_user.id)
+
+    delete_project_cascade(db, project_id)
+    return None
+
+
+@router.patch("/{project_id}", response_model=ProjectPublic)
+def update_project(
+    project_id: int,
+    payload: ProjectUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    project = get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not is_member(db, project_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Not a project member")
+
+    require_owner(db, project_id, current_user.id)
+
+    # Update title (with uniqueness check per owner)
+    if payload.title is not None:
+        if exists_project_with_title_for_owner_excluding(db, project.created_by, payload.title, project_id):
+            raise HTTPException(status_code=400, detail="You already have a project with this title")
+        project.title = payload.title
+
+    # Update description (can be None)
+    if payload.description is not None:
+        project.description = payload.description
+
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return project

@@ -1,0 +1,12 @@
+from app.models.user import User  # noqa: F401
+from app.models.task import Task  # noqa: F401
+from app.models.task_dependency import TaskDependency  # noqa: F401
+from app.models.skill import Skill  # noqa: F401
+from app.models.user_skill import UserSkill  # noqa: F401
+from app.models.task_skill_requirement import TaskSkillRequirement  # noqa: F401
+from app.models.task_assignment import TaskAssignment  # noqa: F401
+from app.models.availability_window import AvailabilityWindow  # noqa: F401
+from app.models.availability_override import AvailabilityOverride  # noqa: F401
+from app.models.scheduled_block import ScheduledBlock  # noqa: F401
+from app.models.project_document import ProjectDocument  # noqa: F401
+from app.models.project_message import ProjectMessage  # noqa: F401
