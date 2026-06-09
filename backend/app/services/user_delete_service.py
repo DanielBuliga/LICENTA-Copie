@@ -62,6 +62,6 @@ def delete_user_account(db: Session, user_id: int) -> None:
     db.query(ProjectMember).filter(ProjectMember.user_id == user_id).delete()
     db.query(AvailabilityOverride).filter(AvailabilityOverride.user_id == user_id).delete()
     db.query(AvailabilityWindow).filter(AvailabilityWindow.user_id == user_id).delete()
-    db.query(UserSkill).filter(or_(UserSkill.user_id == user_id, UserSkill.validated_by == user_id)).delete(synchronize_session=False)
+    db.query(UserSkill).filter(UserSkill.user_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete()
     db.commit()

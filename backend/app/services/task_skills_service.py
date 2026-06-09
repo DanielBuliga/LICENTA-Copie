@@ -7,13 +7,12 @@ def list_task_requirements(db: Session, task_id: int) -> list[TaskSkillRequireme
     return db.query(TaskSkillRequirement).filter(TaskSkillRequirement.task_id == task_id).all()
 
 
-def replace_task_requirements(db: Session, task_id: int, items: list[tuple[int, int]]) -> list[TaskSkillRequirement]:
-    # items: list of (skill_id, min_level)
+def replace_task_requirements(db: Session, task_id: int, skill_ids: list[int]) -> list[TaskSkillRequirement]:
     db.query(TaskSkillRequirement).filter(TaskSkillRequirement.task_id == task_id).delete()
     db.commit()
 
-    for skill_id, min_level in items:
-        row = TaskSkillRequirement(task_id=task_id, skill_id=skill_id, min_level=min_level)
+    for skill_id in skill_ids:
+        row = TaskSkillRequirement(task_id=task_id, skill_id=skill_id)
         db.add(row)
 
     db.commit()

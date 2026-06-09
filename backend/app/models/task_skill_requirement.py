@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -12,5 +12,3 @@ class TaskSkillRequirement(Base):
 
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False)
     skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"), nullable=False)
-
-    min_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

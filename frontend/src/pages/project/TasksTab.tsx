@@ -92,7 +92,13 @@ type SkillExtractionResponse = {
   task_id: number;
   document_count: number;
   applied: boolean;
-  suggestions: { skill_id: number; name: string; min_level: number; confidence: number; reason: string }[];
+  suggestions: {
+    skill_id: number;
+    name: string;
+    confidence: number;
+    reason: string;
+    matched_term?: string | null;
+  }[];
 };
 
 function formatMinutes(m: number) {
@@ -302,10 +308,14 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setExtractingTaskId(taskId);
     try {
       const res = await api.post<SkillExtractionResponse>(`/tasks/${taskId}/skills/extract`, null, { params: { apply: true } });
-      const names = res.data.suggestions.map((skill) => `${skill.name} (L${skill.min_level})`);
+      const names = res.data.suggestions.map((skill) => {
+        const confidence = Math.round(skill.confidence * 100);
+        const matchedTerm = skill.matched_term ? `, termen: ${skill.matched_term}` : "";
+        return `${skill.name} (${confidence}%${matchedTerm})`;
+      });
       setSuccess(
         names.length
-          ? `Skill-uri extrase si aplicate: ${names.join(", ")}. Documente analizate: ${res.data.document_count}.`
+          ? `Skilluri extrase. Potrivirile foarte sigure au fost aplicate automat: ${names.join(", ")}. Documente analizate: ${res.data.document_count}.`
           : `Nu am gasit skill-uri existente in descriere/documentele taskului. Documente analizate: ${res.data.document_count}.`
       );
     } catch (err: unknown) {

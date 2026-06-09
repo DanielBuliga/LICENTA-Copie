@@ -26,7 +26,7 @@ def get_task_skills(task_id: int, db: Session = Depends(get_db), current_user=De
         raise HTTPException(status_code=403, detail="Not a project member")
 
     rows = list_task_requirements(db, task_id)
-    return [{"skill_id": r.skill_id, "min_level": r.min_level} for r in rows]
+    return [{"skill_id": r.skill_id} for r in rows]
 
 
 @router.put("/{task_id}/skills")
@@ -51,10 +51,9 @@ def put_task_skills(task_id: int, payload: TaskSkillsUpdate, db: Session = Depen
         if not get_skill(db, it.skill_id):
             raise HTTPException(status_code=400, detail=f"Invalid skill_id {it.skill_id}")
 
-    items = [(it.skill_id, it.min_level) for it in payload.skills]
-    rows = replace_task_requirements(db, task_id, items)
+    rows = replace_task_requirements(db, task_id, [it.skill_id for it in payload.skills])
 
-    return [{"skill_id": r.skill_id, "min_level": r.min_level} for r in rows]
+    return [{"skill_id": r.skill_id} for r in rows]
 
 
 @router.post("/{task_id}/skills/extract", response_model=TaskSkillExtractionResponse)
@@ -76,9 +75,9 @@ def extract_skills_for_task(
 
     if apply:
         require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
-        items = [(item["skill_id"], item["min_level"]) for item in result["suggestions"]]
-        if items:
-            replace_task_requirements(db, task_id, items)
+        skill_ids = [item["skill_id"] for item in result["suggestions"] if item["confidence"] >= 0.9]
+        if skill_ids:
+            replace_task_requirements(db, task_id, skill_ids)
         result["applied"] = True
 
     return result

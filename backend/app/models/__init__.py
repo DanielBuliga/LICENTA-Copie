@@ -2,6 +2,7 @@ from app.models.user import User  # noqa: F401
 from app.models.task import Task  # noqa: F401
 from app.models.task_dependency import TaskDependency  # noqa: F401
 from app.models.skill import Skill  # noqa: F401
+from app.models.skill_alias import SkillAlias  # noqa: F401
 from app.models.user_skill import UserSkill  # noqa: F401
 from app.models.task_skill_requirement import TaskSkillRequirement  # noqa: F401
 from app.models.task_assignment import TaskAssignment  # noqa: F401

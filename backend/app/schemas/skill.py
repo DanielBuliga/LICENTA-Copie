@@ -17,9 +17,21 @@ class SkillPublic(BaseModel):
         from_attributes = True
 
 
+class SkillAliasCreate(BaseModel):
+    alias: str = Field(min_length=1, max_length=120)
+
+
+class SkillAliasPublic(BaseModel):
+    id: int
+    skill_id: int
+    alias: str
+
+    class Config:
+        from_attributes = True
+
+
 class UserSkillItem(BaseModel):
     skill_id: int
-    level: int = Field(ge=1, le=5)
 
 
 class UserSkillsUpdate(BaseModel):
@@ -28,7 +40,6 @@ class UserSkillsUpdate(BaseModel):
 
 class TaskSkillItem(BaseModel):
     skill_id: int
-    min_level: int = Field(default=1, ge=1, le=5)
 
 
 class TaskSkillsUpdate(BaseModel):
@@ -38,9 +49,9 @@ class TaskSkillsUpdate(BaseModel):
 class TaskSkillSuggestion(BaseModel):
     skill_id: int
     name: str
-    min_level: int = Field(ge=1, le=5)
     confidence: float
     reason: str
+    matched_term: str | None = None
 
 
 class TaskSkillExtractionResponse(BaseModel):
@@ -52,26 +63,13 @@ class TaskSkillExtractionResponse(BaseModel):
 
 class UserSkillAdd(BaseModel):
     skill_id: int
-    level: int = Field(default=1, ge=1, le=5)
-
-
-class UserSkillUpdate(BaseModel):
-    level: int = Field(ge=1, le=5)
 
 
 class UserSkillPublic(BaseModel):
     skill_id: int
-    level: int
-    validation_status: str = "PENDING"
-    validated_by: int | None = None
 
 
 class MemberSkillPublic(UserSkillPublic):
     user_id: int
     user_name: str | None = None
     user_email: str | None = None
-
-
-class MemberSkillValidationUpdate(BaseModel):
-    level: int | None = Field(default=None, ge=1, le=5)
-    validation_status: str = Field(pattern="^(PENDING|VALIDATED|ADJUSTED)$")

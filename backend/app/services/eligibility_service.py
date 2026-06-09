@@ -14,22 +14,14 @@ def eligible_members_for_task(db: Session, project_id: int, task_id: int) -> lis
         members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
         return [m.user_id for m in members]
 
-    req_map = {r.skill_id: r.min_level for r in reqs}
+    required_skill_ids = {r.skill_id for r in reqs}
 
     members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
     eligible: list[int] = []
 
     for m in members:
-        skills = db.query(UserSkill).filter(UserSkill.user_id == m.user_id).all()
-        user_map = {s.skill_id: s.level for s in skills}
-
-        ok = True
-        for skill_id, min_level in req_map.items():
-            if user_map.get(skill_id, 0) < min_level:
-                ok = False
-                break
-
-        if ok:
+        user_skill_ids = {skill_id for (skill_id,) in db.query(UserSkill.skill_id).filter(UserSkill.user_id == m.user_id).all()}
+        if required_skill_ids.issubset(user_skill_ids):
             eligible.append(m.user_id)
 
     return eligible
