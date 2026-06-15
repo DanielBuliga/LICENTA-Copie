@@ -9,6 +9,7 @@ from app.utils.time_utils import utc_naive
 
 def compute_problems(db: Session, project_id: int) -> list[dict]:
     tasks = db.query(Task).filter(Task.project_id == project_id, Task.status != "CLOSED").all()
+    tasks_by_id = {task.id: task for task in tasks}
     deps = db.query(TaskDependency).filter(TaskDependency.project_id == project_id).all()
 
     planned_by_task: dict[int, int] = {t.id: 0 for t in tasks}
@@ -34,20 +35,39 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
     for t in tasks:
         eligible = eligible_members_for_task(db, project_id, t.id)
         if len(eligible) == 0:
-            problems.append({"task_id": t.id, "type": "NO_SKILLS", "reason": "No eligible member (skills)", "deadline": t.deadline})
+            problems.append(
+                {
+                    "task_id": t.id,
+                    "task_title": t.title,
+                    "type": "NO_SKILLS",
+                    "reason": "Nu există niciun membru eligibil pe baza skillurilor cerute.",
+                    "deadline": t.deadline,
+                }
+            )
 
         planned = planned_by_task.get(t.id, 0)
         if planned < t.estimate_minutes:
-            problems.append({"task_id": t.id, "type": "AT_RISK", "reason": f"Planned {planned} min, needed {t.estimate_minutes} min", "deadline": t.deadline})
+            problems.append(
+                {
+                    "task_id": t.id,
+                    "task_title": t.title,
+                    "type": "AT_RISK",
+                    "reason": f"Planificat {planned} min din {t.estimate_minutes} min necesare.",
+                    "deadline": t.deadline,
+                }
+            )
 
     for d in deps:
         if d.predecessor_task_id not in fully_planned:
+            successor = tasks_by_id.get(d.successor_task_id)
+            predecessor = tasks_by_id.get(d.predecessor_task_id)
             problems.append(
                 {
                     "task_id": d.successor_task_id,
+                    "task_title": successor.title if successor else None,
                     "type": "BLOCKED",
-                    "reason": f"Blocked by task {d.predecessor_task_id}",
-                    "deadline": next((t.deadline for t in tasks if t.id == d.successor_task_id), None),
+                    "reason": f"Blocat de taskul {predecessor.title if predecessor else f'#{d.predecessor_task_id}'}.",
+                    "deadline": successor.deadline if successor else None,
                 }
             )
 

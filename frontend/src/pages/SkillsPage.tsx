@@ -243,7 +243,7 @@ export function SkillsPage() {
         {error ? <Alert severity="error">{error}</Alert> : null}
         {success ? <Alert severity="success">{success}</Alert> : null}
 
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, alignItems: "start" }}>
           <Card>
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
@@ -297,8 +297,26 @@ export function SkillsPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent sx={{ p: 3 }}>
+          <Card
+            sx={{
+              height: { xs: "70vh", lg: "calc(100vh - 220px)" },
+              minHeight: 420,
+              maxHeight: 620,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <CardContent
+              sx={{
+                p: 3,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                height: "100%",
+                overflow: "hidden",
+              }}
+            >
               <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                   <BuildRoundedIcon sx={{ color: accent.value }} />
@@ -329,7 +347,16 @@ export function SkillsPage() {
                 </Button>
               </Stack>
 
-              <Stack spacing={1.25}>
+              <Stack
+                spacing={1.25}
+                sx={{
+                  overflowY: "auto",
+                  pr: 0.75,
+                  minHeight: 0,
+                  flex: "1 1 0",
+                  maxHeight: "none",
+                }}
+              >
                 {skills.map((skill) => (
                   <Box
                     key={skill.id}
