@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from app.models.task import Task
 from app.models.scheduled_block import ScheduledBlock
 from app.models.task_dependency import TaskDependency
+from app.models.task_assignment import TaskAssignment
+from app.models.project_member import ProjectMember
+from app.models.user import User
 from app.services.eligibility_service import eligible_members_for_task
 from app.services.tasks_service import leaf_tasks, task_path
 from app.utils.time_utils import utc_naive
@@ -58,6 +61,31 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
                     "task_path": task_path(db, t),
                     "type": "AT_RISK",
                     "reason": f"Planificat {planned} min din {t.estimate_minutes} min necesare.",
+                    "deadline": t.deadline,
+                }
+            )
+
+        inactive_assignments = (
+            db.query(TaskAssignment, ProjectMember, User)
+            .join(ProjectMember, ProjectMember.user_id == TaskAssignment.user_id)
+            .join(User, User.id == TaskAssignment.user_id)
+            .filter(
+                TaskAssignment.task_id == t.id,
+                ProjectMember.project_id == project_id,
+                ProjectMember.status == "INACTIVE",
+            )
+            .all()
+        )
+        for assignment, member, user in inactive_assignments:
+            if assignment.member_status == "DONE":
+                continue
+            problems.append(
+                {
+                    "task_id": t.id,
+                    "task_title": t.title,
+                    "task_path": task_path(db, t),
+                    "type": "INACTIVE_MEMBER",
+                    "reason": f"Membrul {user.name or user.email} este inactiv, dar are assignment activ pe acest task.",
                     "deadline": t.deadline,
                 }
             )

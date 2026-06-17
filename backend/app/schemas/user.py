@@ -12,6 +12,7 @@ class UserPublic(BaseModel):
     id: int
     name: str
     email: EmailStr
+    status: str = "ACTIVE"
     created_at: datetime
 
     class Config:

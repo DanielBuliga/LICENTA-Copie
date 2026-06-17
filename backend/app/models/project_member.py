@@ -15,7 +15,10 @@ class ProjectMember(Base):
 
     # Keep role as simple string for MVP
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="OWNER")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
 
     joined_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
+    inactive_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    inactive_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)

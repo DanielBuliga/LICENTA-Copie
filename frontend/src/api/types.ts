@@ -8,6 +8,7 @@ export type ProjectListItem = {
   title: string;
   description: string | null;
   role: string;
+  member_status?: "ACTIVE" | "INACTIVE";
   created_at: string;
 };
 

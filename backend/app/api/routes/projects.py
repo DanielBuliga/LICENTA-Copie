@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -5,7 +7,7 @@ from app.core.deps import get_db
 from app.core.auth_deps import get_current_user
 
 from app.schemas.project import ProjectCreate, ProjectPublic, ProjectListItem, ProjectMemberPublic, ProjectUpdate
-from app.schemas.member import MemberAddRequest, MemberRoleUpdate, ProjectMemberOut
+from app.schemas.member import MemberAddRequest, MemberRoleUpdate, MemberStatusUpdate, ProjectMemberOut, MemberRemoveResponse
 
 from app.services.users_service import get_user_by_email
 from app.services.projects_service import (
@@ -18,6 +20,7 @@ from app.services.projects_service import (
     is_member,
     get_project_member,
     count_owners,
+    deactivate_member,
     exists_project_with_title_for_owner,
     exists_project_with_title_for_owner_excluding
 )
@@ -26,17 +29,47 @@ from app.models.user import User
 from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
 from app.models.scheduled_block import ScheduledBlock
-from app.services.notification_service import notify_member_added
+from app.models.project_document import ProjectDocument
+from app.models.project_message import ProjectMessage
+from app.services.notification_service import notify_member_added, notify_member_inactive_replan_needed
+from app.utils.time_utils import utc_naive
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 ALLOWED_ROLES = {"OWNER", "ADMIN", "MEMBER"}
+ALLOWED_MEMBER_STATUSES = {"ACTIVE", "INACTIVE"}
 
 
 def require_owner(db: Session, project_id: int, user_id: int):
     role = get_member_role(db, project_id, user_id)
     if role != "OWNER":
         raise HTTPException(status_code=403, detail="Only OWNER can manage project")
+
+
+def _member_has_project_history(db: Session, project_id: int, user_id: int) -> bool:
+    task_ids = [tid for (tid,) in db.query(Task.id).filter(Task.project_id == project_id).all()]
+    has_created_tasks = db.query(Task.id).filter(Task.project_id == project_id, Task.created_by == user_id).first() is not None
+    has_messages = db.query(ProjectMessage.id).filter(ProjectMessage.project_id == project_id, ProjectMessage.sender_id == user_id).first() is not None
+    has_documents = db.query(ProjectDocument.id).filter(ProjectDocument.project_id == project_id, ProjectDocument.uploaded_by == user_id).first() is not None
+    has_blocks = db.query(ScheduledBlock.id).filter(ScheduledBlock.project_id == project_id, ScheduledBlock.user_id == user_id).first() is not None
+    has_assignments = False
+    if task_ids:
+        has_assignments = (
+            db.query(TaskAssignment.id)
+            .filter(TaskAssignment.user_id == user_id, TaskAssignment.task_id.in_(task_ids))
+            .first()
+            is not None
+        )
+    return has_created_tasks or has_messages or has_documents or has_blocks or has_assignments
+
+
+def _delete_future_member_blocks(db: Session, project_id: int, user_id: int) -> None:
+    now = utc_naive(datetime.now(timezone.utc))
+    db.query(ScheduledBlock).filter(
+        ScheduledBlock.project_id == project_id,
+        ScheduledBlock.user_id == user_id,
+        ScheduledBlock.end_datetime >= now,
+    ).delete(synchronize_session=False)
 
 
 @router.post("", response_model=ProjectPublic, status_code=201)
@@ -69,6 +102,7 @@ def my_projects(
                 title=project.title,
                 description=project.description,
                 role=member.role,
+                member_status=member.status,
                 created_at=project.created_at,
             )
         )
@@ -111,7 +145,10 @@ def project_members(
             name=users_by_id.get(member.user_id).name if users_by_id.get(member.user_id) else None,
             email=users_by_id.get(member.user_id).email if users_by_id.get(member.user_id) else None,
             role=member.role,
+            status=member.status,
             joined_at=member.joined_at,
+            inactive_at=member.inactive_at,
+            inactive_reason=member.inactive_reason,
         )
         for member in members
     ]
@@ -129,9 +166,11 @@ def add_project_member(
     user = get_user_by_email(db, payload.email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if getattr(user, "status", "ACTIVE") != "ACTIVE":
+        raise HTTPException(status_code=400, detail="User account is deactivated")
 
-    existing = get_project_member(db, project_id, user.id)
-    if existing:
+    existing = get_project_member(db, project_id, user.id, active_only=False)
+    if existing and existing.status == "ACTIVE":
         raise HTTPException(status_code=400, detail="User is already a project member")
 
     role = payload.role
@@ -155,13 +194,19 @@ def change_member_role(
 ):
     require_owner(db, project_id, current_user.id)
 
-    member = get_project_member(db, project_id, user_id)
+    member = get_project_member(db, project_id, user_id, active_only=False)
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+    if member.status != "ACTIVE":
+        raise HTTPException(status_code=400, detail="Inactive members cannot change role")
 
     new_role = payload.role
     if new_role not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role")
+
+    project = get_project_by_id(db, project_id)
+    if project and project.created_by == user_id and new_role != member.role:
+        raise HTTPException(status_code=400, detail="Project creator role cannot be changed")
 
     if member.role == "OWNER" and new_role != "OWNER":
         if count_owners(db, project_id) <= 1:
@@ -174,7 +219,47 @@ def change_member_role(
     return member
 
 
-@router.delete("/{project_id}/members/{user_id}", status_code=204)
+@router.patch("/{project_id}/members/{user_id}/status", response_model=ProjectMemberOut)
+def change_member_status(
+    project_id: int,
+    user_id: int,
+    payload: MemberStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    require_owner(db, project_id, current_user.id)
+
+    member = get_project_member(db, project_id, user_id, active_only=False)
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    new_status = payload.status.upper()
+    if new_status not in ALLOWED_MEMBER_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid member status")
+
+    if member.role == "OWNER" and new_status != "ACTIVE":
+        if count_owners(db, project_id) <= 1:
+            raise HTTPException(status_code=400, detail="Project must have at least one active OWNER")
+
+    if new_status == "ACTIVE":
+        user = db.query(User).filter(User.id == user_id).first()
+        if user and getattr(user, "status", "ACTIVE") != "ACTIVE":
+            raise HTTPException(status_code=400, detail="User account is deactivated")
+        member.status = "ACTIVE"
+        member.inactive_at = None
+        member.inactive_reason = None
+        db.add(member)
+        db.commit()
+        db.refresh(member)
+        return member
+
+    _delete_future_member_blocks(db, project_id, user_id)
+    member = deactivate_member(db, member, payload.reason or "Marcat inactiv manual")
+    notify_member_inactive_replan_needed(db, project_id, user_id)
+    return member
+
+
+@router.delete("/{project_id}/members/{user_id}", response_model=MemberRemoveResponse)
 def remove_project_member(
     project_id: int,
     user_id: int,
@@ -183,28 +268,32 @@ def remove_project_member(
 ):
     require_owner(db, project_id, current_user.id)
 
-    member = get_project_member(db, project_id, user_id)
+    member = get_project_member(db, project_id, user_id, active_only=False)
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    if member.role == "OWNER":
+    if member.role == "OWNER" and member.status == "ACTIVE":
         if count_owners(db, project_id) <= 1:
-            raise HTTPException(status_code=400, detail="Project must have at least one OWNER")
+            raise HTTPException(status_code=400, detail="Project must have at least one active OWNER")
 
-    task_ids = [tid for (tid,) in db.query(Task.id).filter(Task.project_id == project_id).all()]
-    if task_ids:
-        db.query(ScheduledBlock).filter(
-            ScheduledBlock.project_id == project_id,
-            ScheduledBlock.user_id == user_id,
-        ).delete()
-        db.query(TaskAssignment).filter(
-            TaskAssignment.user_id == user_id,
-            TaskAssignment.task_id.in_(task_ids),
-        ).delete(synchronize_session=False)
+    has_history = _member_has_project_history(db, project_id, user_id)
+    if has_history:
+        _delete_future_member_blocks(db, project_id, user_id)
+        deactivate_member(db, member, "Membru eliminat din proiect, istoric pastrat")
+        notify_member_inactive_replan_needed(db, project_id, user_id)
+        return MemberRemoveResponse(
+            action="deactivated",
+            status="INACTIVE",
+            message="Membrul are activitate in proiect si a fost marcat ca inactiv pentru pastrarea istoricului.",
+        )
 
     db.delete(member)
     db.commit()
-    return None
+    return MemberRemoveResponse(
+        action="deleted",
+        status=None,
+        message="Membrul nu avea activitate in proiect si a fost eliminat definitiv.",
+    )
 
 
 @router.delete("/{project_id}", status_code=204)

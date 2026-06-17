@@ -23,6 +23,7 @@ class ProjectListItem(BaseModel):
     title: str
     description: str | None
     role: str
+    member_status: str = "ACTIVE"
     created_at: datetime
 
     class Config:
@@ -34,7 +35,10 @@ class ProjectMemberPublic(BaseModel):
     name: str | None = None
     email: str | None = None
     role: str
+    status: str = "ACTIVE"
     joined_at: datetime
+    inactive_at: datetime | None = None
+    inactive_reason: str | None = None
 
     class Config:
         from_attributes = True

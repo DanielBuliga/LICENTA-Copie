@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from app.models.project import Project
 from app.models.project_member import ProjectMember
@@ -13,7 +14,18 @@ def create_project(db: Session, title: str, description: str | None, created_by:
 
 
 def add_member(db: Session, project_id: int, user_id: int, role: str) -> ProjectMember:
-    member = ProjectMember(project_id=project_id, user_id=user_id, role=role)
+    existing = get_project_member(db, project_id, user_id, active_only=False)
+    if existing:
+        existing.role = role
+        existing.status = "ACTIVE"
+        existing.inactive_at = None
+        existing.inactive_reason = None
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    member = ProjectMember(project_id=project_id, user_id=user_id, role=role, status="ACTIVE")
     db.add(member)
     db.commit()
     db.refresh(member)
@@ -24,12 +36,11 @@ def get_project_by_id(db: Session, project_id: int) -> Project | None:
     return db.query(Project).filter(Project.id == project_id).first()
 
 
-def get_project_member(db: Session, project_id: int, user_id: int) -> ProjectMember | None:
-    return (
-        db.query(ProjectMember)
-        .filter(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id)
-        .first()
-    )
+def get_project_member(db: Session, project_id: int, user_id: int, active_only: bool = True) -> ProjectMember | None:
+    query = db.query(ProjectMember).filter(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id)
+    if active_only:
+        query = query.filter(ProjectMember.status == "ACTIVE")
+    return query.first()
 
 
 def is_member(db: Session, project_id: int, user_id: int) -> bool:
@@ -41,14 +52,17 @@ def get_member_role(db: Session, project_id: int, user_id: int) -> str | None:
     return m.role if m else None
 
 
-def list_members(db: Session, project_id: int) -> list[ProjectMember]:
-    return db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
+def list_members(db: Session, project_id: int, active_only: bool = False) -> list[ProjectMember]:
+    query = db.query(ProjectMember).filter(ProjectMember.project_id == project_id)
+    if active_only:
+        query = query.filter(ProjectMember.status == "ACTIVE")
+    return query.all()
 
 
 def count_owners(db: Session, project_id: int) -> int:
     return (
         db.query(ProjectMember)
-        .filter(ProjectMember.project_id == project_id, ProjectMember.role == "OWNER")
+        .filter(ProjectMember.project_id == project_id, ProjectMember.role == "OWNER", ProjectMember.status == "ACTIVE")
         .count()
     )
 
@@ -60,10 +74,20 @@ def list_projects_for_user(db: Session, user_id: int) -> list[tuple[Project, Pro
     rows = (
         db.query(Project, ProjectMember)
         .join(ProjectMember, ProjectMember.project_id == Project.id)
-        .filter(ProjectMember.user_id == user_id)
+        .filter(ProjectMember.user_id == user_id, ProjectMember.status == "ACTIVE")
         .all()
     )
     return rows
+
+
+def deactivate_member(db: Session, member: ProjectMember, reason: str | None = None) -> ProjectMember:
+    member.status = "INACTIVE"
+    member.inactive_at = datetime.now(timezone.utc)
+    member.inactive_reason = reason
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return member
 
 
 def exists_project_with_title_for_owner(db: Session, created_by: int, title: str) -> bool:

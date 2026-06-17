@@ -36,10 +36,14 @@ type MemberItem = {
   name?: string | null;
   email?: string | null;
   role: "OWNER" | "ADMIN" | "MEMBER";
+  status: "ACTIVE" | "INACTIVE";
   joined_at: string;
+  inactive_at?: string | null;
+  inactive_reason?: string | null;
 };
 
 type CurrentUser = { id: number };
+type ProjectInfo = { id: number; created_by: number };
 
 type TaskItem = {
   id: number;
@@ -53,6 +57,12 @@ type AssignmentItem = {
   member_status: "TODO" | "IN_PROGRESS" | "DONE";
 };
 
+type MemberRemoveResponse = {
+  action: "deleted" | "deactivated";
+  status: "INACTIVE" | null;
+  message: string;
+};
+
 function roleMeta(role: MemberItem["role"]) {
   if (role === "OWNER") return { label: "OWNER", color: "#4F46E5", soft: "#E0E7FF" };
   if (role === "ADMIN") return { label: "ADMIN", color: "#0284C7", soft: "#E0F2FE" };
@@ -64,10 +74,12 @@ export function MembersTab({ projectId }: { projectId: number }) {
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [memberStats, setMemberStats] = useState<Record<number, { assigned: number; done: number }>>({});
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [projectCreatorId, setProjectCreatorId] = useState<number | null>(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<MemberItem["role"]>("MEMBER");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const currentMember = useMemo(
@@ -80,9 +92,10 @@ export function MembersTab({ projectId }: { projectId: number }) {
     setLoading(true);
     setError(null);
     try {
-      const [membersRes, meRes] = await Promise.all([
+      const [membersRes, meRes, projectRes] = await Promise.all([
         api.get<MemberItem[]>(`/projects/${projectId}/members`),
         api.get<CurrentUser>("/users/me"),
+        api.get<ProjectInfo>(`/projects/${projectId}`),
       ]);
       const tasksRes = await api.get<TaskItem[]>(`/projects/${projectId}/tasks`);
       const assignmentPairs = await Promise.all(
@@ -106,6 +119,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
       setMembers(membersRes.data);
       setMemberStats(nextStats);
       setCurrentUserId(meRes.data.id);
+      setProjectCreatorId(projectRes.data.created_by);
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca membrii"));
     } finally {
@@ -120,6 +134,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
   async function addMember() {
     if (!email.trim()) return;
     setLoading(true);
+    setMessage(null);
     setError(null);
     try {
       await api.post(`/projects/${projectId}/members`, { email: email.trim(), role });
@@ -135,11 +150,13 @@ export function MembersTab({ projectId }: { projectId: number }) {
   }
 
   async function removeMember(userId: number) {
-    if (!window.confirm("Sigur vrei să elimini acest membru din proiect? Asignările și planificările lui din proiect vor fi eliminate.")) return;
+    if (!window.confirm("Sigur vrei să elimini definitiv acest membru din proiect? Operația este destinată membrilor adăugați din greșeală. Dacă are istoric, sistemul îl va păstra ca inactiv.")) return;
     setLoading(true);
+    setMessage(null);
     setError(null);
     try {
-      await api.delete(`/projects/${projectId}/members/${userId}`);
+      const res = await api.delete<MemberRemoveResponse>(`/projects/${projectId}/members/${userId}`);
+      setMessage(res.data.message);
       await load();
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut sterge membrul"));
@@ -148,13 +165,50 @@ export function MembersTab({ projectId }: { projectId: number }) {
     }
   }
 
+  async function changeRole(userId: number, nextRole: MemberItem["role"]) {
+    setLoading(true);
+    setMessage(null);
+    setError(null);
+    try {
+      await api.patch(`/projects/${projectId}/members/${userId}`, { role: nextRole });
+      setMessage("Rolul membrului a fost actualizat.");
+      await load();
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Nu am putut actualiza rolul membrului"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function changeStatus(userId: number, nextStatus: MemberItem["status"]) {
+    if (nextStatus === "INACTIVE" && !window.confirm("Marchezi acest membru ca inactiv? Nu va mai intra în planificare, iar taskurile active asignate lui vor apărea în Problems.")) return;
+    setLoading(true);
+    setMessage(null);
+    setError(null);
+    try {
+      await api.patch(`/projects/${projectId}/members/${userId}/status`, {
+        status: nextStatus,
+        reason: nextStatus === "INACTIVE" ? "Marcat inactiv manual" : undefined,
+      });
+      setMessage(nextStatus === "ACTIVE" ? "Membrul a fost reactivat în proiect." : "Membrul a fost marcat ca inactiv.");
+      await load();
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Nu am putut actualiza statusul membrului"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <Stack spacing={2}>
       {loading ? <LinearProgress /> : null}
+      {message ? <Alert severity="success" onClose={() => setMessage(null)}>{message}</Alert> : null}
       {error ? <Alert severity="error">{error}</Alert> : null}
 
       <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
-        <Typography sx={{ color: "text.secondary" }}>{members.length} membri</Typography>
+        <Typography sx={{ color: "text.secondary" }}>
+          {members.filter((member) => member.status === "ACTIVE").length} activi / {members.length} total
+        </Typography>
         {isOwner ? (
           <Button variant="contained" startIcon={<PersonAddRoundedIcon />} onClick={() => setDialogOpen(true)}>
             Adauga membru
@@ -168,10 +222,13 @@ export function MembersTab({ projectId }: { projectId: number }) {
           const initials = displayName.slice(0, 1).toUpperCase();
           const roleInfo = roleMeta(member.role);
           const canRemove = isOwner && member.user_id !== currentUserId;
+          const isInactive = member.status === "INACTIVE";
+          const canEditRole = isOwner && !isInactive && member.user_id !== projectCreatorId;
+          const canEditStatus = isOwner && member.user_id !== projectCreatorId;
           const stats = memberStats[member.user_id] ?? { assigned: 0, done: 0 };
 
           return (
-            <Card key={member.user_id}>
+            <Card key={member.user_id} sx={{ opacity: isInactive ? 0.72 : 1 }}>
               <CardContent sx={{ p: 3 }}>
                 <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start", mb: 2 }}>
                   <Avatar sx={{ bgcolor: accent.soft, color: accent.text, fontWeight: 900 }}>{initials}</Avatar>
@@ -186,16 +243,75 @@ export function MembersTab({ projectId }: { projectId: number }) {
                       </Typography>
                     </Stack>
                   </Box>
-                  <Chip
-                    label={roleInfo.label}
-                    sx={{
-                      bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(roleInfo.color, 0.22) : roleInfo.soft),
-                      color: (theme) => (theme.palette.mode === "dark" ? "#F8FAFC" : roleInfo.color),
-                      border: `1px solid ${alpha(roleInfo.color, 0.24)}`,
-                      fontWeight: 950,
-                    }}
-                  />
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexShrink: 0 }}>
+                    {canEditStatus ? (
+                      <FormControl size="small" sx={{ minWidth: 104 }} onClick={(event) => event.stopPropagation()}>
+                        <Select
+                          value={member.status}
+                          onChange={(event) => void changeStatus(member.user_id, event.target.value as MemberItem["status"])}
+                          sx={{
+                            height: 32,
+                            borderRadius: 99,
+                            fontWeight: 950,
+                            color: isInactive ? "text.secondary" : "success.dark",
+                            bgcolor: (theme) => (isInactive ? "transparent" : theme.palette.mode === "dark" ? alpha("#16A34A", 0.2) : "#DCFCE7"),
+                            "& .MuiSelect-select": { py: 0.5, pl: 1.5 },
+                          }}
+                        >
+                          <MenuItem value="ACTIVE">Activ</MenuItem>
+                          <MenuItem value="INACTIVE">Inactiv</MenuItem>
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <Chip
+                        label={isInactive ? "Inactiv" : "Activ"}
+                        color={isInactive ? "default" : "success"}
+                        variant={isInactive ? "outlined" : "filled"}
+                        sx={{ fontWeight: 900 }}
+                      />
+                    )}
+                    {canEditRole ? (
+                      <FormControl size="small" sx={{ minWidth: 112 }} onClick={(event) => event.stopPropagation()}>
+                        <Select
+                          value={member.role}
+                          onChange={(event) => void changeRole(member.user_id, event.target.value as MemberItem["role"])}
+                          sx={{
+                            height: 32,
+                            borderRadius: 99,
+                            fontWeight: 950,
+                            color: roleInfo.color,
+                            bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(roleInfo.color, 0.22) : roleInfo.soft),
+                            "& .MuiSelect-select": { py: 0.5, pl: 1.5 },
+                          }}
+                        >
+                          <MenuItem value="MEMBER">MEMBER</MenuItem>
+                          <MenuItem value="ADMIN">ADMIN</MenuItem>
+                          <MenuItem value="OWNER">OWNER</MenuItem>
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <Chip
+                        label={roleInfo.label}
+                        sx={{
+                          bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(roleInfo.color, 0.22) : roleInfo.soft),
+                          color: (theme) => (theme.palette.mode === "dark" ? "#F8FAFC" : roleInfo.color),
+                          border: `1px solid ${alpha(roleInfo.color, 0.24)}`,
+                          fontWeight: 950,
+                        }}
+                      />
+                    )}
+                  </Stack>
                 </Stack>
+
+                {member.inactive_at ? (
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 1.5 }}>
+                    <Chip
+                      label={`Inactiv din ${new Date(member.inactive_at).toLocaleDateString("ro-RO")}`}
+                      variant="outlined"
+                      sx={{ fontWeight: 800 }}
+                    />
+                  </Stack>
+                ) : null}
 
                 <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
                   <Chip
@@ -223,10 +339,15 @@ export function MembersTab({ projectId }: { projectId: number }) {
                   <Box sx={{ flex: 1 }} />
                   {canRemove ? (
                     <Button color="error" startIcon={<DeleteOutlineRoundedIcon />} onClick={() => void removeMember(member.user_id)}>
-                      Sterge
+                      Șterge
                     </Button>
                   ) : null}
                 </Stack>
+                {member.inactive_reason ? (
+                  <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 1.5 }}>
+                    Motiv: {member.inactive_reason}
+                  </Typography>
+                ) : null}
               </CardContent>
             </Card>
           );

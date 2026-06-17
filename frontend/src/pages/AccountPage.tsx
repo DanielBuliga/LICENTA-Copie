@@ -77,9 +77,9 @@ export function AccountPage() {
   }
 
   async function deleteAccount() {
-    const firstConfirm = window.confirm("Sigur vrei să ștergi contul? Acțiunea va șterge contul și datele asociate și nu poate fi anulată.");
+    const firstConfirm = window.confirm("Sigur vrei să ștergi contul? Contul va fi dezactivat, nu te vei mai putea autentifica, iar istoricul din proiecte va fi păstrat.");
     if (!firstConfirm) return;
-    const secondConfirm = window.confirm("Confirmare finală: ștergi definitiv contul curent?");
+    const secondConfirm = window.confirm("Confirmare finală: dezactivezi contul curent?");
     if (!secondConfirm) return;
 
     setLoading(true);
@@ -168,8 +168,8 @@ export function AccountPage() {
           <CardContent sx={{ p: 3 }}>
             <Stack direction={{ xs: "column", sm: "row" }} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" }, gap: 2 }}>
               <Box>
-                <Typography variant="h6">Actiuni cont</Typography>
-                <Typography sx={{ color: "text.secondary" }}>Iesi din sesiunea curenta de lucru sau sterge definitiv contul.</Typography>
+                <Typography variant="h6">Acțiuni cont</Typography>
+                <Typography sx={{ color: "text.secondary" }}>Ieși din sesiunea curentă sau dezactivează contul. Istoricul din proiecte va fi păstrat.</Typography>
               </Box>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                 <Button variant="outlined" color="error" startIcon={<LogoutRoundedIcon />} onClick={logout}>

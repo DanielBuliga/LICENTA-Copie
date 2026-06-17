@@ -28,7 +28,7 @@ import { getApiErrorMessage } from "../api/errors";
 import type { ProjectCreate, ProjectListItem, TaskPublic } from "../api/types";
 import { AppLayout } from "../components/AppLayout";
 
-type MemberItem = { user_id: number; role: string; joined_at: string };
+type MemberItem = { user_id: number; role: string; status?: "ACTIVE" | "INACTIVE"; joined_at: string };
 type ProjectCardItem = ProjectListItem & {
   tasks: TaskPublic[];
   members: MemberItem[];
@@ -184,7 +184,7 @@ export function ProjectsPage() {
                 <Stack direction="row" spacing={2} sx={{ color: "text.secondary", mt: 2, alignItems: "center" }}>
                   <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
                     <GroupsRoundedIcon fontSize="small" />
-                    <Typography>{project.members.length}</Typography>
+                    <Typography>{project.members.filter((member) => member.status !== "INACTIVE").length}</Typography>
                   </Stack>
                   <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
                     <EventRoundedIcon fontSize="small" />

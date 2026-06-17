@@ -9,6 +9,7 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
+from app.models.user import User
 from app.services.email_service import send_notification_email
 
 
@@ -43,7 +44,7 @@ def get_or_create_preferences(db: Session, user_id: int) -> NotificationPreferen
 
 
 def should_send_for_type(prefs: NotificationPreference, notification_type: str) -> bool:
-    if notification_type == "PROJECT_MEMBER_ADDED":
+    if notification_type in {"PROJECT_MEMBER_ADDED", "MEMBER_INACTIVE_REPLAN", "PLAN_PROBLEMS"}:
         return prefs.project_events_enabled
     if notification_type == "TASK_ASSIGNED":
         return prefs.assignment_events_enabled
@@ -70,6 +71,9 @@ def create_notification(
     email: bool = False,
 ) -> Notification | None:
     try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or getattr(user, "status", "ACTIVE") != "ACTIVE":
+            return None
         prefs = get_or_create_preferences(db, user_id)
         if not should_send_for_type(prefs, notification_type):
             return None
@@ -144,7 +148,7 @@ def notify_task_assigned(db: Session, task: Task, user_id: int) -> None:
 
 def notify_project_message(db: Session, project_id: int, message_id: int, sender_id: int, sender_name: str | None, preview: str) -> None:
     project = db.query(Project).filter(Project.id == project_id).first()
-    members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id, ProjectMember.user_id != sender_id).all()
+    members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id, ProjectMember.user_id != sender_id, ProjectMember.status == "ACTIVE").all()
     clean_preview = preview.strip()
     if len(clean_preview) > 160:
         clean_preview = clean_preview[:157] + "..."
@@ -167,7 +171,7 @@ def notify_plan_problems(db: Session, project_id: int, problems: list[object]) -
     project = db.query(Project).filter(Project.id == project_id).first()
     managers = (
         db.query(ProjectMember)
-        .filter(ProjectMember.project_id == project_id, ProjectMember.role.in_(["OWNER", "ADMIN"]))
+        .filter(ProjectMember.project_id == project_id, ProjectMember.role.in_(["OWNER", "ADMIN"]), ProjectMember.status == "ACTIVE")
         .all()
     )
     if not managers:
@@ -202,9 +206,59 @@ def notify_plan_problems(db: Session, project_id: int, problems: list[object]) -
         )
 
 
+def notify_member_inactive_replan_needed(db: Session, project_id: int, inactive_user_id: int) -> None:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    inactive_user = db.query(User).filter(User.id == inactive_user_id).first()
+    if not project or not inactive_user:
+        return
+
+    active_assignments = (
+        db.query(TaskAssignment)
+        .join(Task, Task.id == TaskAssignment.task_id)
+        .filter(
+            Task.project_id == project_id,
+            Task.status.notin_(["CLOSED"]),
+            TaskAssignment.user_id == inactive_user_id,
+            TaskAssignment.member_status != "DONE",
+        )
+        .count()
+    )
+    if active_assignments <= 0:
+        return
+
+    managers = (
+        db.query(ProjectMember)
+        .filter(
+            ProjectMember.project_id == project_id,
+            ProjectMember.role.in_(["OWNER", "ADMIN"]),
+            ProjectMember.status == "ACTIVE",
+            ProjectMember.user_id != inactive_user_id,
+        )
+        .all()
+    )
+    if not managers:
+        return
+
+    member_name = inactive_user.name or inactive_user.email
+    task_label = "task activ" if active_assignments == 1 else "taskuri active"
+    for manager in managers:
+        create_notification(
+            db,
+            user_id=manager.user_id,
+            notification_type="MEMBER_INACTIVE_REPLAN",
+            title=f"Membru inactiv in {project.title}",
+            body=(
+                f"Membrul {member_name} este inactiv si are {active_assignments} {task_label} nefinalizate. "
+                "Verifica tabul Problems si ruleaza Replanificare daca este necesar."
+            ),
+            project_id=project_id,
+            event_key=f"project:{project_id}:member-inactive:{inactive_user_id}:active-assignments:{active_assignments}",
+        )
+
+
 def notify_ready_to_close(db: Session, task: Task) -> None:
     project = db.query(Project).filter(Project.id == task.project_id).first()
-    owners = db.query(ProjectMember).filter(ProjectMember.project_id == task.project_id, ProjectMember.role == "OWNER").all()
+    owners = db.query(ProjectMember).filter(ProjectMember.project_id == task.project_id, ProjectMember.role == "OWNER", ProjectMember.status == "ACTIVE").all()
     for owner in owners:
         create_notification(
             db,
@@ -225,7 +279,7 @@ def notify_project_completed_if_needed(db: Session, project_id: int) -> None:
     tasks = db.query(Task).filter(Task.project_id == project_id).all()
     if not tasks or any(task.status != "CLOSED" for task in tasks):
         return
-    members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
+    members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id, ProjectMember.status == "ACTIVE").all()
     for member in members:
         create_notification(
             db,
@@ -244,7 +298,9 @@ def send_deadline_reminders(db: Session) -> int:
         db.query(TaskAssignment, Task, Project)
         .join(Task, Task.id == TaskAssignment.task_id)
         .join(Project, Project.id == Task.project_id)
+        .join(ProjectMember, (ProjectMember.project_id == Task.project_id) & (ProjectMember.user_id == TaskAssignment.user_id))
         .filter(TaskAssignment.member_status != "DONE", Task.status != "CLOSED", Task.deadline > now)
+        .filter(ProjectMember.status == "ACTIVE")
         .all()
     )
     count = 0

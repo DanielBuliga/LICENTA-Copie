@@ -72,6 +72,7 @@ type MemberItem = {
   name?: string | null;
   email?: string | null;
   role: "OWNER" | "ADMIN" | "MEMBER";
+  status?: "ACTIVE" | "INACTIVE";
   joined_at: string;
 };
 

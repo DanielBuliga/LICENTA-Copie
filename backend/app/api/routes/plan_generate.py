@@ -111,7 +111,7 @@ def generate_plan(
     eligible.sort(key=lambda x: (as_utc(x.deadline), -x.priority))
 
     # Prepare members and free slots
-    members = list_members(db, project_id)
+    members = list_members(db, project_id, active_only=True)
     member_ids = [m.user_id for m in members]
 
     slots_by_user: dict[int, list[tuple]] = {}

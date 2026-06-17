@@ -11,12 +11,12 @@ def eligible_members_for_task(db: Session, project_id: int, task_id: int) -> lis
 
     # If no requirements, everyone in project is eligible
     if not reqs:
-        members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
+        members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id, ProjectMember.status == "ACTIVE").all()
         return [m.user_id for m in members]
 
     required_skill_ids = {r.skill_id for r in reqs}
 
-    members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
+    members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id, ProjectMember.status == "ACTIVE").all()
     eligible: list[int] = []
 
     for m in members:
