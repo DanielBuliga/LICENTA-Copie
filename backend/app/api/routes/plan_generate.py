@@ -18,6 +18,7 @@ from app.services.assignments_service import create_assignment, list_assigned_us
 from app.services.slot_builder import build_free_slots_for_user
 from app.services.planning_engine import pack_task_into_slots, as_utc
 from app.services.notification_service import notify_plan_problems, notify_task_assigned
+from app.services.activity_service import log_project_activity
 
 from app.models.scheduled_block import ScheduledBlock
 from app.utils.time_utils import utc_naive, local_midnight_to_utc
@@ -219,6 +220,21 @@ def generate_plan(
             at_risk.append(AtRiskItem(task_id=tid, reason="Dependency cycle detected (cannot schedule)"))
 
     notify_plan_problems(db, project_id, at_risk)
+    log_project_activity(
+        db,
+        project_id,
+        "PLAN_GENERATED",
+        "Planificare generata",
+        actor_id=current_user.id,
+        entity_type="PLAN",
+        entity_id=project_id,
+        details=(
+            f"Blocuri create: {blocks_created}. "
+            f"Asignari create: {assignments_created}. "
+            f"Asignari pastrate: {assignments_preserved}. "
+            f"Probleme: {len(at_risk)}."
+        ),
+    )
 
     return PlanGenerateResponse(
         blocks_created=blocks_created,

@@ -33,6 +33,7 @@ from app.models.project_document import ProjectDocument
 from app.models.project_message import ProjectMessage
 from app.services.notification_service import notify_member_added, notify_member_inactive_replan_needed
 from app.utils.time_utils import utc_naive
+from app.services.activity_service import log_project_activity
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -84,6 +85,16 @@ def create_new_project(
 
     project = create_project(db, payload.title, payload.description, current_user.id)
     add_member(db, project.id, current_user.id, role="OWNER")
+    log_project_activity(
+        db,
+        project.id,
+        "PROJECT_CREATED",
+        f"Proiect creat: {project.title}",
+        actor_id=current_user.id,
+        entity_type="PROJECT",
+        entity_id=project.id,
+        details=f"Proiectul {project.title} a fost creat.",
+    )
     return project
 
 
@@ -181,6 +192,16 @@ def add_project_member(
     project = get_project_by_id(db, project_id)
     if project:
         notify_member_added(db, project, user.id, current_user.name or current_user.email)
+        log_project_activity(
+            db,
+            project_id,
+            "MEMBER_ADDED",
+            f"Membru adaugat: {user.name or user.email}",
+            actor_id=current_user.id,
+            entity_type="MEMBER",
+            entity_id=user.id,
+            details=f"Rol initial: {role}.",
+        )
     return member
 
 
@@ -212,10 +233,22 @@ def change_member_role(
         if count_owners(db, project_id) <= 1:
             raise HTTPException(status_code=400, detail="Project must have at least one OWNER")
 
+    old_role = member.role
     member.role = new_role
     db.add(member)
     db.commit()
     db.refresh(member)
+    user = db.query(User).filter(User.id == user_id).first()
+    log_project_activity(
+        db,
+        project_id,
+        "MEMBER_ROLE_CHANGED",
+        f"Rol modificat: {user.name or user.email if user else f'User #{user_id}'}",
+        actor_id=current_user.id,
+        entity_type="MEMBER",
+        entity_id=user_id,
+        details=f"Rol schimbat din {old_role} in {new_role}.",
+    )
     return member
 
 
@@ -251,10 +284,31 @@ def change_member_status(
         db.add(member)
         db.commit()
         db.refresh(member)
+        log_project_activity(
+            db,
+            project_id,
+            "MEMBER_STATUS_CHANGED",
+            f"Membru reactivat: {user.name or user.email if user else f'User #{user_id}'}",
+            actor_id=current_user.id,
+            entity_type="MEMBER",
+            entity_id=user_id,
+            details="Status schimbat in ACTIVE.",
+        )
         return member
 
     _delete_future_member_blocks(db, project_id, user_id)
     member = deactivate_member(db, member, payload.reason or "Marcat inactiv manual")
+    user = db.query(User).filter(User.id == user_id).first()
+    log_project_activity(
+        db,
+        project_id,
+        "MEMBER_STATUS_CHANGED",
+        f"Membru inactiv: {user.name or user.email if user else f'User #{user_id}'}",
+        actor_id=current_user.id,
+        entity_type="MEMBER",
+        entity_id=user_id,
+        details=payload.reason or "Status schimbat in INACTIVE.",
+    )
     notify_member_inactive_replan_needed(db, project_id, user_id)
     return member
 
@@ -280,6 +334,17 @@ def remove_project_member(
     if has_history:
         _delete_future_member_blocks(db, project_id, user_id)
         deactivate_member(db, member, "Membru eliminat din proiect, istoric pastrat")
+        user = db.query(User).filter(User.id == user_id).first()
+        log_project_activity(
+            db,
+            project_id,
+            "MEMBER_STATUS_CHANGED",
+            f"Membru inactiv: {user.name or user.email if user else f'User #{user_id}'}",
+            actor_id=current_user.id,
+            entity_type="MEMBER",
+            entity_id=user_id,
+            details="Eliminare ceruta, dar membrul avea istoric si a fost pastrat ca INACTIVE.",
+        )
         notify_member_inactive_replan_needed(db, project_id, user_id)
         return MemberRemoveResponse(
             action="deactivated",
@@ -289,6 +354,17 @@ def remove_project_member(
 
     db.delete(member)
     db.commit()
+    user = db.query(User).filter(User.id == user_id).first()
+    log_project_activity(
+        db,
+        project_id,
+        "MEMBER_REMOVED",
+        f"Membru eliminat definitiv: {user.name or user.email if user else f'User #{user_id}'}",
+        actor_id=current_user.id,
+        entity_type="MEMBER",
+        entity_id=user_id,
+        details="Membrul nu avea activitate in proiect.",
+    )
     return MemberRemoveResponse(
         action="deleted",
         status=None,

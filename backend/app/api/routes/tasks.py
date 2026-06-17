@@ -24,6 +24,7 @@ from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
 from app.models.project import Project
 from app.services.notification_service import notify_project_completed_if_needed
+from app.services.activity_service import log_project_activity
 
 from app.utils.time_utils import utc_naive
 
@@ -105,6 +106,16 @@ def create_task_in_project(
     )
     if task.parent_task_id is not None:
         recompute_parent_status_chain(db, task)
+    log_project_activity(
+        db,
+        project_id,
+        "TASK_CREATED",
+        f"Task creat: {task.title}",
+        actor_id=current_user.id,
+        entity_type="TASK",
+        entity_id=task.id,
+        details=f"Estimare: {task.estimate_minutes} min. Deadline: {task.deadline}.",
+    )
     return task
 
 
@@ -154,6 +165,13 @@ def update_task_by_id(
 
     if task.status == "CLOSED":
         raise HTTPException(status_code=400, detail="Closed task cannot be edited")
+
+    old_title = task.title
+    old_priority = task.priority
+    old_estimate = task.estimate_minutes
+    old_deadline = task.deadline
+    old_status = task.status
+    old_parent_task_id = task.parent_task_id
     
     # Apply changes (only if provided)
     if payload.title is not None:
@@ -170,8 +188,6 @@ def update_task_by_id(
         if payload.status == "CLOSED" and has_subtasks(db, task.id) and not direct_subtasks_closed(db, task.id):
             raise HTTPException(status_code=409, detail="Taskul are subtaskuri nefinalizate")
         task.status = payload.status
-
-    old_parent_task_id = task.parent_task_id
 
     if "parent_task_id" in payload.model_fields_set:
         if payload.parent_task_id is None:
@@ -195,6 +211,31 @@ def update_task_by_id(
         old_parent = recompute_container_status(db, old_parent_task_id)
         if old_parent:
             recompute_parent_status_chain(db, old_parent)
+    changes: list[str] = []
+    if old_title != task.title:
+        changes.append(f"titlu: {old_title} -> {task.title}")
+    if old_priority != task.priority:
+        changes.append(f"prioritate: {old_priority} -> {task.priority}")
+    if old_estimate != task.estimate_minutes:
+        changes.append(f"estimare: {old_estimate} min -> {task.estimate_minutes} min")
+    if old_deadline != task.deadline:
+        changes.append(f"deadline: {old_deadline} -> {task.deadline}")
+    if old_status != task.status:
+        changes.append(f"status: {old_status} -> {task.status}")
+    if old_parent_task_id != task.parent_task_id:
+        changes.append(f"parinte: {old_parent_task_id or 'fara'} -> {task.parent_task_id or 'fara'}")
+    if changes:
+        event_type = "TASK_DEADLINE_CHANGED" if old_deadline != task.deadline and len(changes) == 1 else "TASK_UPDATED"
+        log_project_activity(
+            db,
+            task.project_id,
+            event_type,
+            f"Task modificat: {task.title}",
+            actor_id=current_user.id,
+            entity_type="TASK",
+            entity_id=task.id,
+            details="; ".join(changes),
+        )
     return task
 
 
@@ -216,7 +257,18 @@ def delete_task_by_id(
     if has_subtasks(db, task.id):
         raise HTTPException(status_code=400, detail="Sterge sau muta subtaskurile inainte de a sterge taskul parinte")
 
+    project_id = task.project_id
+    task_title = task.title
     delete_task(db, task)
+    log_project_activity(
+        db,
+        project_id,
+        "TASK_DELETED",
+        f"Task sters: {task_title}",
+        actor_id=current_user.id,
+        entity_type="TASK",
+        entity_id=task_id,
+    )
     return None
 
 
@@ -247,5 +299,15 @@ def close_task(
     db.refresh(task)
     recompute_parent_status_chain(db, task)
     notify_project_completed_if_needed(db, task.project_id)
+    log_project_activity(
+        db,
+        task.project_id,
+        "TASK_CLOSED",
+        f"Task inchis: {task.title}",
+        actor_id=current_user.id,
+        entity_type="TASK",
+        entity_id=task.id,
+        details="Ownerul a confirmat finalizarea taskului.",
+    )
 
     return {"task_id": task.id, "status": task.status}

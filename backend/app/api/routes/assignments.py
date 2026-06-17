@@ -15,7 +15,9 @@ from app.services.assignments_service import (
 )
 from app.services.task_status_service import recompute_task_status
 from app.services.notification_service import notify_task_assigned
+from app.services.activity_service import log_project_activity
 from app.models.scheduled_block import ScheduledBlock
+from app.models.user import User
 
 router = APIRouter(prefix="/tasks", tags=["assignments"])
 
@@ -70,6 +72,17 @@ def add_assignment(
 
     row = create_assignment(db, task_id, payload.user_id, payload.assigned_minutes)
     notify_task_assigned(db, task, payload.user_id)
+    assigned_user = db.query(User).filter(User.id == payload.user_id).first()
+    log_project_activity(
+        db,
+        task.project_id,
+        "TASK_ASSIGNED",
+        f"Task asignat: {task.title}",
+        actor_id=current_user.id,
+        entity_type="TASK",
+        entity_id=task.id,
+        details=f"Asignat catre {assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}.",
+    )
 
     # Recompute task status after new assignment 
     task = get_task(db, task_id)
@@ -105,6 +118,7 @@ def update_assignment_status(
     if payload.member_status not in ALLOWED_MEMBER_STATUS:
         raise HTTPException(status_code=400, detail="Invalid member_status")
 
+    old_status = row.member_status
     row.member_status = payload.member_status
     db.add(row)
     db.commit()
@@ -114,6 +128,16 @@ def update_assignment_status(
     task = get_task(db, task_id)
     if task:
         recompute_task_status(db, task)
+        log_project_activity(
+            db,
+            task.project_id,
+            "ASSIGNMENT_STATUS_CHANGED",
+            f"Status assignment modificat: {task.title}",
+            actor_id=current_user.id,
+            entity_type="TASK",
+            entity_id=task.id,
+            details=f"Status personal: {old_status} -> {row.member_status}.",
+        )
 
     return row
 
@@ -139,6 +163,7 @@ def remove_assignment(
     row = get_assignment(db, task_id, user_id)
     if not row:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    assigned_user = db.query(User).filter(User.id == user_id).first()
 
     db.query(ScheduledBlock).filter(
         ScheduledBlock.task_id == task_id,
@@ -152,5 +177,15 @@ def remove_assignment(
     task = get_task(db, task_id)
     if task:
         recompute_task_status(db, task)
+        log_project_activity(
+            db,
+            task.project_id,
+            "TASK_UNASSIGNED",
+            f"Asignare eliminata: {task.title}",
+            actor_id=current_user.id,
+            entity_type="TASK",
+            entity_id=task.id,
+            details=f"Eliminata asignarea pentru {assigned_user.name or assigned_user.email if assigned_user else f'User #{user_id}'}.",
+        )
 
     return None

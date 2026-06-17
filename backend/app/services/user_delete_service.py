@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.project_member import ProjectMember
 from app.models.scheduled_block import ScheduledBlock
 from app.models.user import User
+from app.services.activity_service import log_project_activity
 from app.services.notification_service import notify_member_inactive_replan_needed
 from app.utils.time_utils import utc_naive
 
@@ -72,4 +73,14 @@ def delete_user_account(db: Session, user_id: int) -> None:
     db.commit()
 
     for project_id in project_ids:
+        log_project_activity(
+            db,
+            project_id,
+            "MEMBER_STATUS_CHANGED",
+            f"Membru inactiv: {user.name or user.email}",
+            actor_id=user_id,
+            entity_type="MEMBER",
+            entity_id=user_id,
+            details="Contul utilizatorului a fost dezactivat.",
+        )
         notify_member_inactive_replan_needed(db, project_id, user_id)

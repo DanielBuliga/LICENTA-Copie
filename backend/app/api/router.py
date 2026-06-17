@@ -17,6 +17,7 @@ from app.api.routes.plan_export_ics import router as plan_export_ics_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.messages import router as messages_router
 from app.api.routes.notifications import router as notifications_router
+from app.api.routes.activity import router as activity_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -36,3 +37,4 @@ api_router.include_router(plan_export_ics_router)
 api_router.include_router(documents_router)
 api_router.include_router(messages_router)
 api_router.include_router(notifications_router)
+api_router.include_router(activity_router)

@@ -10,6 +10,7 @@ from app.models.scheduled_block import ScheduledBlock
 from app.models.project_document import ProjectDocument
 from app.models.project_message import ProjectMessage
 from app.models.notification import Notification, NotificationDeliveryLog
+from app.models.project_activity import ProjectActivity
 
 
 def delete_project_cascade(db: Session, project_id: int) -> None:
@@ -44,7 +45,10 @@ def delete_project_cascade(db: Session, project_id: int) -> None:
     # 7) members
     db.query(ProjectMember).filter(ProjectMember.project_id == project_id).delete()
 
-    # 8) project
+    # 8) activity log
+    db.query(ProjectActivity).filter(ProjectActivity.project_id == project_id).delete()
+
+    # 9) project
     db.query(Project).filter(Project.id == project_id).delete()
 
     db.commit()

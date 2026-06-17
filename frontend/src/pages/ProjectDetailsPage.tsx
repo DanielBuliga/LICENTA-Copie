@@ -10,6 +10,7 @@ import FolderCopyOutlinedIcon from "@mui/icons-material/FolderCopyOutlined";
 import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
 import IosShareOutlinedIcon from "@mui/icons-material/IosShareOutlined";
 import ReportProblemOutlinedIcon from "@mui/icons-material/ReportProblemOutlined";
+import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
@@ -22,6 +23,7 @@ import { PlanTab } from "./project/PlanTab";
 import { ProblemsTab } from "./project/ProblemsTab";
 import { ProjectDashboardTab } from "./project/ProjectDashboardTab";
 import { TasksTab } from "./project/TasksTab";
+import { ActivityTab } from "./project/ActivityTab";
 
 type ProjectPublic = { id: number; title: string; description: string | null; created_by: number; created_at: string };
 
@@ -63,8 +65,9 @@ export function ProjectDetailsPage() {
           <ToggleButton value={3}><CalendarMonthOutlinedIcon fontSize="small" /> Plan</ToggleButton>
           <ToggleButton value={4}><ReportProblemOutlinedIcon fontSize="small" /> Problems</ToggleButton>
           <ToggleButton value={5}><GroupOutlinedIcon fontSize="small" /> Membrii</ToggleButton>
-          <ToggleButton value={6}><FolderCopyOutlinedIcon fontSize="small" /> Documents</ToggleButton>
-          <ToggleButton value={7}><IosShareOutlinedIcon fontSize="small" /> Export</ToggleButton>
+          <ToggleButton value={6}><HistoryRoundedIcon fontSize="small" /> Istoric</ToggleButton>
+          <ToggleButton value={7}><FolderCopyOutlinedIcon fontSize="small" /> Documents</ToggleButton>
+          <ToggleButton value={8}><IosShareOutlinedIcon fontSize="small" /> Export</ToggleButton>
         </ToggleButtonGroup>
         <TabPanel value={tab} index={0}><DescriptionTab projectId={projectId} description={project?.description ?? null} /></TabPanel>
         <TabPanel value={tab} index={1}><ProjectDashboardTab projectId={projectId} projectTitle={title} /></TabPanel>
@@ -72,8 +75,9 @@ export function ProjectDetailsPage() {
         <TabPanel value={tab} index={3}><PlanTab projectId={projectId} /></TabPanel>
         <TabPanel value={tab} index={4}><ProblemsTab projectId={projectId} /></TabPanel>
         <TabPanel value={tab} index={5}><MembersTab projectId={projectId} /></TabPanel>
-        <TabPanel value={tab} index={6}><DocumentsTab projectId={projectId} /></TabPanel>
-        <TabPanel value={tab} index={7}><ExportTab projectId={projectId} /></TabPanel>
+        <TabPanel value={tab} index={6}><ActivityTab projectId={projectId} /></TabPanel>
+        <TabPanel value={tab} index={7}><DocumentsTab projectId={projectId} /></TabPanel>
+        <TabPanel value={tab} index={8}><ExportTab projectId={projectId} /></TabPanel>
       </Box>
     </AppLayout>
   );
