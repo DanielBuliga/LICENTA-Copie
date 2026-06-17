@@ -7,6 +7,7 @@ import { getApiErrorMessage } from "../../api/errors";
 type ProblemItem = {
   task_id: number;
   task_title?: string | null;
+  task_path?: string | null;
   type: string;
   reason: string;
   deadline: string;
@@ -44,7 +45,7 @@ export function ProblemsTab({ projectId }: { projectId: number }) {
           <CardContent sx={{ p: 2.5 }}>
             <Stack direction="row" sx={{ justifyContent: "space-between", gap: 1 }}>
               <Typography sx={{ fontWeight: 800 }}>
-                {problem.task_title || `Task #${problem.task_id}`}
+                {problem.task_path || problem.task_title || `Task #${problem.task_id}`}
               </Typography>
               <Chip label={problem.type} color="warning" size="small" />
             </Stack>

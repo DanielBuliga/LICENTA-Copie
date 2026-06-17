@@ -6,7 +6,7 @@ from app.core.auth_deps import get_current_user
 from app.core.permissions import require_roles
 from app.schemas.assignment import AssignmentCreate, AssignmentUpdate, AssignmentPublic
 from app.services.projects_service import is_member
-from app.services.tasks_service import get_task
+from app.services.tasks_service import get_task, has_subtasks
 from app.services.assignments_service import (
     list_assignments,
     get_assignment,
@@ -56,6 +56,9 @@ def add_assignment(
 
     # Only OWNER/ADMIN can add assignments
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
+
+    if has_subtasks(db, task.id):
+        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere si nu se asigneaza direct")
 
     # You can only assign users who are members of the same project
     if not is_member(db, task.project_id, payload.user_id):

@@ -4,11 +4,14 @@ from app.models.task import Task
 from app.models.scheduled_block import ScheduledBlock
 from app.models.task_dependency import TaskDependency
 from app.services.eligibility_service import eligible_members_for_task
+from app.services.tasks_service import leaf_tasks, task_path
 from app.utils.time_utils import utc_naive
 
 
 def compute_problems(db: Session, project_id: int) -> list[dict]:
-    tasks = db.query(Task).filter(Task.project_id == project_id, Task.status != "CLOSED").all()
+    all_tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    tasks = [task for task in leaf_tasks(db, project_id) if task.status != "CLOSED"]
+    parent_ids = {task.parent_task_id for task in all_tasks if task.parent_task_id is not None}
     tasks_by_id = {task.id: task for task in tasks}
     deps = db.query(TaskDependency).filter(TaskDependency.project_id == project_id).all()
 
@@ -39,6 +42,7 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
                 {
                     "task_id": t.id,
                     "task_title": t.title,
+                    "task_path": task_path(db, t),
                     "type": "NO_SKILLS",
                     "reason": "Nu există niciun membru eligibil pe baza skillurilor cerute.",
                     "deadline": t.deadline,
@@ -51,6 +55,7 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
                 {
                     "task_id": t.id,
                     "task_title": t.title,
+                    "task_path": task_path(db, t),
                     "type": "AT_RISK",
                     "reason": f"Planificat {planned} min din {t.estimate_minutes} min necesare.",
                     "deadline": t.deadline,
@@ -58,13 +63,16 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
             )
 
     for d in deps:
+        if d.successor_task_id in parent_ids:
+            continue
         if d.predecessor_task_id not in fully_planned:
             successor = tasks_by_id.get(d.successor_task_id)
-            predecessor = tasks_by_id.get(d.predecessor_task_id)
+            predecessor = next((task for task in all_tasks if task.id == d.predecessor_task_id), None)
             problems.append(
                 {
                     "task_id": d.successor_task_id,
                     "task_title": successor.title if successor else None,
+                    "task_path": task_path(db, successor) if successor else None,
                     "type": "BLOCKED",
                     "reason": f"Blocat de taskul {predecessor.title if predecessor else f'#{d.predecessor_task_id}'}.",
                     "deadline": successor.deadline if successor else None,

@@ -7,7 +7,7 @@ from app.core.permissions import require_roles
 
 from app.schemas.skill import TaskSkillExtractionResponse, TaskSkillsUpdate
 from app.services.projects_service import is_member
-from app.services.tasks_service import get_task
+from app.services.tasks_service import get_task, has_subtasks
 from app.services.skills_service import get_skill
 from app.services.task_skills_service import list_task_requirements, replace_task_requirements
 from app.services.eligibility_service import eligible_members_for_task
@@ -41,6 +41,9 @@ def put_task_skills(task_id: int, payload: TaskSkillsUpdate, db: Session = Depen
     # Only OWNER/ADMIN can change task skill requirements
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
+    if has_subtasks(db, task.id):
+        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; skillurile se seteaza pe subtaskuri")
+
     # No duplicates in request
     seen = set()
     for it in payload.skills:
@@ -70,6 +73,9 @@ def extract_skills_for_task(
     if not is_member(db, task.project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a project member")
 
+    if has_subtasks(db, task.id):
+        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; extrage skilluri pentru subtaskuri")
+
     result = extract_task_skills(db, task)
     result["applied"] = False
 
@@ -91,6 +97,9 @@ def get_eligible(task_id: int, db: Session = Depends(get_db), current_user=Depen
 
     if not is_member(db, task.project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a project member")
+
+    if has_subtasks(db, task.id):
+        return {"eligible_user_ids": []}
 
     user_ids = eligible_members_for_task(db, task.project_id, task_id)
     return {"eligible_user_ids": user_ids}

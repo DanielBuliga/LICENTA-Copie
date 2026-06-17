@@ -2,6 +2,7 @@
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, IconButton, LinearProgress, Stack, Typography } from "@mui/material";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import AccountTreeRoundedIcon from "@mui/icons-material/AccountTreeRounded";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
@@ -14,7 +15,7 @@ import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
 import type { ProjectDocument } from "./project/DocumentsTab";
 
-type MyTask = { id: number; project_id: number; project_title: string; title: string; description: string | null; priority: number; estimate_minutes: number; deadline: string; status: string; member_status: string; assigned_minutes: number | null };
+type MyTask = { id: number; project_id: number; project_title: string; parent_task_id: number | null; parent_task_title?: string | null; title: string; description: string | null; priority: number; estimate_minutes: number; deadline: string; status: string; member_status: string; assigned_minutes: number | null };
 
 function formatMinutes(minutes: number) {
   if (minutes < 60) return `${minutes} min`;
@@ -97,6 +98,7 @@ export function TaskDetailsPage() {
                     <Typography variant="h4" sx={{ fontWeight: 950 }}>{task.title}</Typography>
                     <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
                       <Chip icon={<FolderRoundedIcon />} label={task.project_title} sx={{ fontWeight: 800 }} />
+                      {task.parent_task_title ? <Chip icon={<AccountTreeRoundedIcon />} label={task.parent_task_title} sx={{ fontWeight: 800 }} /> : null}
                       <Chip label={`Status proiect: ${task.status}`} sx={{ fontWeight: 800 }} />
                       <Chip label={`Statusul meu: ${task.member_status}`} color={task.member_status === "DONE" ? "success" : "default"} sx={{ fontWeight: 800 }} />
                     </Stack>

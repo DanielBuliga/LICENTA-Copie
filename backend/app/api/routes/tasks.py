@@ -7,7 +7,18 @@ from app.core.permissions import require_roles
 
 from app.services.projects_service import is_member, get_project_by_id
 from app.schemas.task import TaskCreate, TaskUpdate, TaskPublic, MyTaskPublic
-from app.services.tasks_service import create_task, get_task, list_tasks, update_task, delete_task, would_create_parent_cycle
+from app.services.tasks_service import (
+    create_task,
+    direct_subtasks_closed,
+    get_task,
+    has_subtasks,
+    list_tasks,
+    recompute_container_status,
+    recompute_parent_status_chain,
+    update_task,
+    delete_task,
+    would_create_parent_cycle,
+)
 from app.services.projects_service import get_member_role
 from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
@@ -32,6 +43,11 @@ def get_my_assigned_tasks(
         .order_by(Task.deadline.asc())
         .all()
     )
+    parent_ids = {task.parent_task_id for task, _, _ in rows if task.parent_task_id is not None}
+    parents_by_id = {
+        parent.id: parent
+        for parent in db.query(Task).filter(Task.id.in_(parent_ids)).all()
+    } if parent_ids else {}
 
     return [
         MyTaskPublic(
@@ -48,6 +64,7 @@ def get_my_assigned_tasks(
             created_at=task.created_at,
             updated_at=task.updated_at,
             project_title=project.title,
+            parent_task_title=parents_by_id.get(task.parent_task_id).title if task.parent_task_id in parents_by_id else None,
             member_status=assignment.member_status,
             assigned_minutes=assignment.assigned_minutes,
         )
@@ -86,6 +103,8 @@ def create_task_in_project(
         deadline=utc_naive(payload.deadline),
         created_by=current_user.id,
     )
+    if task.parent_task_id is not None:
+        recompute_parent_status_chain(db, task)
     return task
 
 
@@ -148,7 +167,11 @@ def update_task_by_id(
     if payload.deadline is not None:
         task.deadline = utc_naive(payload.deadline)
     if payload.status is not None:
+        if payload.status == "CLOSED" and has_subtasks(db, task.id) and not direct_subtasks_closed(db, task.id):
+            raise HTTPException(status_code=409, detail="Taskul are subtaskuri nefinalizate")
         task.status = payload.status
+
+    old_parent_task_id = task.parent_task_id
 
     if "parent_task_id" in payload.model_fields_set:
         if payload.parent_task_id is None:
@@ -166,7 +189,13 @@ def update_task_by_id(
 
             task.parent_task_id = payload.parent_task_id
 
-    return update_task(db, task)
+    task = update_task(db, task)
+    recompute_parent_status_chain(db, task)
+    if old_parent_task_id is not None and old_parent_task_id != task.parent_task_id:
+        old_parent = recompute_container_status(db, old_parent_task_id)
+        if old_parent:
+            recompute_parent_status_chain(db, old_parent)
+    return task
 
 
 @router.delete("/tasks/{task_id}", status_code=204)
@@ -181,6 +210,11 @@ def delete_task_by_id(
 
     if not is_member(db, task.project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a project member")
+
+    require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
+
+    if has_subtasks(db, task.id):
+        raise HTTPException(status_code=400, detail="Sterge sau muta subtaskurile inainte de a sterge taskul parinte")
 
     delete_task(db, task)
     return None
@@ -204,10 +238,14 @@ def close_task(
     if task.status != "READY_TO_CLOSE":
         raise HTTPException(status_code=409, detail="Task is not ready to close")
 
+    if has_subtasks(db, task.id) and not direct_subtasks_closed(db, task.id):
+        raise HTTPException(status_code=409, detail="Taskul are subtaskuri nefinalizate")
+
     task.status = "CLOSED"
     db.add(task)
     db.commit()
     db.refresh(task)
+    recompute_parent_status_chain(db, task)
     notify_project_completed_if_needed(db, task.project_id)
 
     return {"task_id": task.id, "status": task.status}

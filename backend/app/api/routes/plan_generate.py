@@ -11,7 +11,7 @@ from app.schemas.plan_generate import PlanGenerateRequest, PlanGenerateResponse,
 from app.schemas.replan import ReplanRequest
 
 from app.services.projects_service import is_member, list_members
-from app.services.tasks_service import list_tasks
+from app.services.tasks_service import leaf_tasks
 from app.services.dependencies_service import list_dependencies
 from app.services.eligibility_service import eligible_members_for_task
 from app.services.assignments_service import create_assignment, list_assigned_user_ids
@@ -89,7 +89,7 @@ def generate_plan(
     db.commit()
 
     # Collect tasks that still need work. READY_TO_CLOSE means all assignees already finished.
-    tasks = [t for t in list_tasks(db, project_id) if t.status not in {"CLOSED", "READY_TO_CLOSE"}]
+    tasks = [t for t in leaf_tasks(db, project_id) if t.status not in {"CLOSED", "READY_TO_CLOSE"}]
     task_ids = {t.id for t in tasks}
 
     # Build dependency graph

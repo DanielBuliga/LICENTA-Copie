@@ -2,6 +2,7 @@
 import { Alert, Box, Card, CardContent, Chip, FormControl, MenuItem, Select, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
+import AccountTreeRoundedIcon from "@mui/icons-material/AccountTreeRounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
 import FilterListRoundedIcon from "@mui/icons-material/FilterListRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
@@ -20,7 +21,7 @@ import { useAccentColor } from "../hooks/useAccentColor";
 
 type MemberStatus = "TODO" | "IN_PROGRESS" | "DONE";
 type CurrentUser = { id: number; email: string; name?: string | null };
-type MyTask = { id: number; project_id: number; project_title: string; title: string; description: string | null; priority: number; estimate_minutes: number; deadline: string; status: string; member_status: MemberStatus; assigned_minutes: number | null };
+type MyTask = { id: number; project_id: number; project_title: string; parent_task_id: number | null; parent_task_title?: string | null; title: string; description: string | null; priority: number; estimate_minutes: number; deadline: string; status: string; member_status: MemberStatus; assigned_minutes: number | null };
 type StatusFilter = "ALL" | "TODO" | "IN_PROGRESS" | "DONE" | "BLOCKED";
 type PriorityFilter = "ALL" | "URGENT" | "HIGH" | "MEDIUM" | "LOW";
 type ViewMode = "LIST" | "COLUMNS";
@@ -152,6 +153,7 @@ export function ActivitiesPage() {
                           <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", gap: 0.75 }}>
                             <Chip size="small" label={priority.label} sx={{ bgcolor: alpha(priority.color, 0.12), color: priority.color, border: `1px solid ${alpha(priority.color, 0.25)}`, fontWeight: 900 }} />
                             <Chip size="small" label={task.project_title} sx={{ fontWeight: 800 }} />
+                            {task.parent_task_title ? <Chip size="small" label={task.parent_task_title} sx={{ fontWeight: 800 }} /> : null}
                           </Stack>
                           <Box sx={{ height: 4, borderRadius: 99, bgcolor: "divider", overflow: "hidden", mt: 1.5 }}>
                             <Box sx={{ width: isDone ? "100%" : task.member_status === "IN_PROGRESS" ? "55%" : "12%", height: "100%", bgcolor: column.color }} />
@@ -191,6 +193,7 @@ export function ActivitiesPage() {
                       <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: "wrap", gap: 1, alignItems: "center" }}>
                         <Chip size="small" label={priority.label} sx={{ bgcolor: alpha(priority.color, 0.12), color: priority.color, border: `1px solid ${alpha(priority.color, 0.25)}`, fontWeight: 900 }} />
                         <Chip size="small" icon={<FolderRoundedIcon />} label={task.project_title} sx={{ fontWeight: 800 }} />
+                        {task.parent_task_title ? <Chip size="small" icon={<AccountTreeRoundedIcon />} label={task.parent_task_title} sx={{ fontWeight: 800 }} /> : null}
                         <Chip size="small" icon={<AccessTimeRoundedIcon />} label={formatMinutes(task.assigned_minutes ?? task.estimate_minutes)} sx={{ fontWeight: 800 }} />
                         <Chip size="small" icon={<EventRoundedIcon />} label={dayjs(task.deadline).format("DD MMM YYYY")} color={dayjs(task.deadline).isBefore(dayjs()) && !isDone ? "error" : "default"} variant="outlined" sx={{ fontWeight: 800 }} />
                         <FormControl size="small" onClick={(event) => event.stopPropagation()} sx={{ minWidth: 150 }}>

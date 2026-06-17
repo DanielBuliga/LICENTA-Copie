@@ -33,6 +33,7 @@ import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import MoreVertRoundedIcon from "@mui/icons-material/MoreVertRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
+import AccountTreeRoundedIcon from "@mui/icons-material/AccountTreeRounded";
 import dayjs, { Dayjs } from "dayjs";
 
 import { api } from "../../api/api";
@@ -129,6 +130,13 @@ function priorityMeta(priority: number) {
   return { label: "Scăzută", color: "#64748B", helper: "Poate fi planificată după taskurile urgente." };
 }
 
+type TaskNode = TaskPublic & {
+  depth: number;
+  hasChildren: boolean;
+  aggregateEstimateMinutes: number;
+  aggregateDeadline: string;
+};
+
 export function TasksTab({ projectId }: { projectId: number }) {
   const accent = useAccentColor();
   const [items, setItems] = useState<TaskPublic[]>([]);
@@ -167,6 +175,54 @@ export function TasksTab({ projectId }: { projectId: number }) {
     if (priority < 1 || priority > 5) return false;
     return true;
   }, [canManage, title, deadline, estimateMinutes, priority]);
+
+  const taskTree = useMemo<TaskNode[]>(() => {
+    const childrenByParent = new Map<number | null, TaskPublic[]>();
+    items.forEach((task) => {
+      const key = task.parent_task_id ?? null;
+      childrenByParent.set(key, [...(childrenByParent.get(key) ?? []), task]);
+    });
+
+    childrenByParent.forEach((children) => {
+      children.sort((a, b) => dayjs(a.deadline).valueOf() - dayjs(b.deadline).valueOf() || a.title.localeCompare(b.title));
+    });
+
+    const aggregateEstimate = (task: TaskPublic): number => {
+      const children = childrenByParent.get(task.id) ?? [];
+      if (children.length === 0) return task.estimate_minutes;
+      return children.reduce((total, child) => total + aggregateEstimate(child), 0);
+    };
+
+    const aggregateDeadline = (task: TaskPublic): string => {
+      const children = childrenByParent.get(task.id) ?? [];
+      if (children.length === 0) return task.deadline;
+      const childDeadlines = children.map((child) => aggregateDeadline(child));
+      return childDeadlines.reduce((latest, current) =>
+        dayjs(current).isAfter(dayjs(latest)) ? current : latest
+      );
+    };
+
+    const result: TaskNode[] = [];
+    const visit = (task: TaskPublic, depth: number) => {
+      const children = childrenByParent.get(task.id) ?? [];
+      result.push({
+        ...task,
+        depth,
+        hasChildren: children.length > 0,
+        aggregateEstimateMinutes: aggregateEstimate(task),
+        aggregateDeadline: aggregateDeadline(task),
+      });
+      children.forEach((child) => visit(child, depth + 1));
+    };
+
+    (childrenByParent.get(null) ?? []).forEach((task) => visit(task, 0));
+    return result;
+  }, [items]);
+
+  const editingTaskNode = useMemo(
+    () => (editingTask ? taskTree.find((task) => task.id === editingTask.id) : null),
+    [editingTask, taskTree]
+  );
 
   function resetForm() {
     setEditingTask(null);
@@ -253,7 +309,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       parent_task_id: parentTaskId === "" ? null : Number(parentTaskId),
       priority,
       estimate_minutes: estimateMinutes,
-      deadline: deadline.toISOString(),
+      deadline: editingTaskNode?.hasChildren ? editingTaskNode.aggregateDeadline : deadline.toISOString(),
     };
 
     try {
@@ -380,7 +436,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           </Typography>
         )}
 
-        {items.map((t) => {
+        {taskTree.map((t) => {
           const priority = priorityMeta(t.priority);
           const parentTask = t.parent_task_id ? items.find((item) => item.id === t.parent_task_id) : undefined;
           const assignments = assignmentsByTask[t.id] ?? [];
@@ -393,6 +449,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
               sx={{
                 borderRadius: 3,
                 overflow: "hidden",
+                ml: { xs: 0, md: t.depth * 3 },
+                borderStyle: t.hasChildren ? "solid" : "solid",
+                bgcolor: t.hasChildren ? (theme) => (theme.palette.mode === "dark" ? alpha(accent.value, 0.08) : alpha(accent.value, 0.035)) : "background.paper",
                 transition: "border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
                 "&:hover": {
                   borderColor: alpha(accent.value, 0.45),
@@ -411,6 +470,11 @@ export function TasksTab({ projectId }: { projectId: number }) {
                       <Typography variant="subtitle1" sx={{ fontWeight: 900 }} title={t.title}>
                         {t.title}
                       </Typography>
+                      {t.hasChildren ? (
+                        <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.35 }}>
+                          Task părinte · {items.filter((item) => item.parent_task_id === t.id).length} subtaskuri
+                        </Typography>
+                      ) : null}
                       {t.description ? (
                         <Typography variant="body2" sx={{ color: "text.secondary", mt: 1, maxWidth: 860 }}>
                           {t.description}
@@ -419,7 +483,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                     </Box>
                     <Chip
                       size="small"
-                      label={statusChipLabel(t.status)}
+                      label={t.hasChildren ? "CONTAINER" : statusChipLabel(t.status)}
                       color={statusChipColor(t.status)}
                       variant="outlined"
                       sx={{ fontWeight: 900, flexShrink: 0 }}
@@ -474,7 +538,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                       ) : null}
                       <Chip
                         icon={<ScheduleRoundedIcon />}
-                        label={`Estimare: ${formatMinutes(t.estimate_minutes)}`}
+                        label={`${t.hasChildren ? "Estimare agregată" : "Estimare"}: ${formatMinutes(t.aggregateEstimateMinutes)}`}
                         sx={{
                           justifyContent: "flex-start",
                           bgcolor: alpha(accent.value, 0.12),
@@ -487,7 +551,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                       />
                       <Chip
                         icon={<EventRoundedIcon />}
-                        label={`Deadline: ${dayjs(t.deadline).format("DD MMM YYYY, HH:mm")}`}
+                        label={`${t.hasChildren ? "Deadline agregat" : "Deadline"}: ${dayjs(t.aggregateDeadline).format("DD MMM YYYY, HH:mm")}`}
                         sx={{
                           justifyContent: "flex-start",
                           bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#CBD5E1", 0.12) : alpha("#475569", 0.08)),
@@ -499,7 +563,22 @@ export function TasksTab({ projectId }: { projectId: number }) {
                           maxWidth: "100%",
                         }}
                       />
-                      {assignments.length > 0 ? (
+                      {t.hasChildren ? (
+                        <Chip
+                          icon={<AccountTreeRoundedIcon />}
+                          label="Se planifică prin subtaskuri"
+                          sx={{
+                            justifyContent: "flex-start",
+                            bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#22C55E", 0.14) : "#DCFCE7"),
+                            color: (theme) => (theme.palette.mode === "dark" ? "#BBF7D0" : "#166534"),
+                            border: "1px solid",
+                            borderColor: (theme) => (theme.palette.mode === "dark" ? "rgba(187,247,208,0.22)" : "rgba(22,101,52,0.18)"),
+                            fontWeight: 800,
+                            "& .MuiChip-icon": { color: "inherit" },
+                            maxWidth: "100%",
+                          }}
+                        />
+                      ) : assignments.length > 0 ? (
                         <Chip
                           icon={<PersonOutlineRoundedIcon />}
                           label={`Asignat: ${assignments
@@ -537,7 +616,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                       )}
 
                       <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center", ml: "auto" }}>
-                        {myAssignment ? (
+                        {!t.hasChildren && myAssignment ? (
                           <FormControl size="small" sx={{ minWidth: 150, flexShrink: 0 }}>
                             <InputLabel id={`assignment-status-${t.id}`}>Statusul meu</InputLabel>
                             <Select
@@ -575,9 +654,10 @@ export function TasksTab({ projectId }: { projectId: number }) {
 
       <Menu anchorEl={actionsAnchor} open={Boolean(actionsAnchor)} onClose={closeActions}>
         <MenuItem
-          disabled={!actionsTask || extractingTaskId === actionsTask.id}
+          disabled={!actionsTask || extractingTaskId === actionsTask.id || Boolean(taskTree.find((task) => task.id === actionsTask?.id)?.hasChildren)}
           onClick={() => {
             if (!actionsTask) return;
+            if (taskTree.find((task) => task.id === actionsTask.id)?.hasChildren) return;
             void extractSkills(actionsTask.id);
             closeActions();
           }}
@@ -678,11 +758,13 @@ export function TasksTab({ projectId }: { projectId: number }) {
               </FormControl>
 
               <TextField
-                label="Estimare (minute)"
+                label={editingTaskNode?.hasChildren ? "Estimare agregată (minute)" : "Estimare (minute)"}
                 type="number"
-                value={estimateMinutes}
+                value={editingTaskNode?.hasChildren ? editingTaskNode.aggregateEstimateMinutes : estimateMinutes}
                 onChange={(e) => setEstimateMinutes(Number(e.target.value))}
                 slotProps={{ htmlInput: { min: 1 } }}
+                disabled={Boolean(editingTaskNode?.hasChildren)}
+                helperText={editingTaskNode?.hasChildren ? "Taskurile părinte se estimează automat din subtaskuri." : undefined}
                 fullWidth
               />
             </Stack>
@@ -692,12 +774,16 @@ export function TasksTab({ projectId }: { projectId: number }) {
             </Typography>
 
             <DateTimePicker
-              label="Deadline"
-              value={deadline}
+              label={editingTaskNode?.hasChildren ? "Deadline agregat" : "Deadline"}
+              value={editingTaskNode?.hasChildren ? dayjs(editingTaskNode.aggregateDeadline) : deadline}
               onChange={(v) => setDeadline(v)}
               slotProps={{
-                textField: { fullWidth: true },
+                textField: {
+                  fullWidth: true,
+                  helperText: editingTaskNode?.hasChildren ? "Taskurile părinte își iau deadline-ul din cel mai îndepărtat subtask." : undefined,
+                },
               }}
+              disabled={Boolean(editingTaskNode?.hasChildren)}
             />
           </Stack>
         </DialogContent>

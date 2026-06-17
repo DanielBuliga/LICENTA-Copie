@@ -36,6 +36,11 @@ function priorityMeta(priority: number) {
 
 function hours(minutes: number) { return `${Math.round(minutes / 60)}h`; }
 
+function leafTasks(tasks: TaskPublic[]) {
+  const parentIds = new Set(tasks.map((task) => task.parent_task_id).filter((id): id is number => id !== null));
+  return tasks.filter((task) => !parentIds.has(task.id));
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const accent = useAccentColor();
@@ -62,7 +67,7 @@ export function DashboardPage() {
   useEffect(() => { void load(); }, [load]);
 
   const stats = useMemo(() => {
-    const allTasks = projects.flatMap((project) => project.tasks);
+    const allTasks = projects.flatMap((project) => leafTasks(project.tasks));
     const personalTotal = myTasks.length;
     const personalClosed = myTasks.filter((task) => task.member_status === "DONE").length;
     const personalInProgress = myTasks.filter((task) => task.member_status === "IN_PROGRESS").length;
@@ -99,7 +104,7 @@ export function DashboardPage() {
   const totalCompletedActivity = completedActivity.reduce((sum, item) => sum + item.count, 0);
   const nextDeadline = urgentTasks[0] ?? null;
   const ganttTasks = projects.flatMap((project) =>
-    project.tasks.map((task) => ({ ...task, project_title: project.title }))
+    leafTasks(project.tasks).map((task) => ({ ...task, project_title: project.title }))
   );
 
   return (
@@ -123,7 +128,7 @@ export function DashboardPage() {
 
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2 }}><DistributionCard title="Distribuție după prioritate" rows={priorityCounts} total={Math.max(stats.personalTotal, 1)} /><DistributionCard title="Distribuție după status" rows={statusCounts} total={Math.max(stats.personalTotal, 1)} /></Box>
 
-        <Card><CardContent sx={{ p: 3 }}><Typography variant="h6" sx={{ mb: 2 }}>Progres global pe proiecte</Typography><Stack spacing={2}>{projects.map((project) => { const total = project.tasks.length; const closed = project.tasks.filter((task) => task.status === "CLOSED").length; const overdue = project.tasks.filter((task) => task.status !== "CLOSED" && dayjs(task.deadline).isBefore(dayjs())).length; const progress = total ? Math.round((closed / total) * 100) : 0; return <Box key={project.id} onClick={() => navigate(`/projects/${project.id}`)} sx={{ cursor: "pointer" }}><Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 0.75, gap: 2 }}><Typography sx={{ fontWeight: 900 }}>{project.title} →</Typography><Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>{overdue ? <Chip size="small" color="error" label={`${overdue} depășite`} /> : null}<Typography sx={{ color: "text.secondary" }}>{closed}/{total}</Typography><Typography sx={{ color: accent.text, fontWeight: 950 }}>{progress}%</Typography></Stack></Stack><Box sx={{ height: 10, borderRadius: 99, bgcolor: "divider", overflow: "hidden" }}><Box sx={{ width: `${progress}%`, height: "100%", bgcolor: progress === 100 ? "#111827" : accent.value }} /></Box></Box>; })}{projects.length === 0 ? <Typography sx={{ color: "text.secondary" }}>Nu există proiecte.</Typography> : null}</Stack></CardContent></Card>
+        <Card><CardContent sx={{ p: 3 }}><Typography variant="h6" sx={{ mb: 2 }}>Progres global pe proiecte</Typography><Stack spacing={2}>{projects.map((project) => { const projectLeafTasks = leafTasks(project.tasks); const total = projectLeafTasks.length; const closed = projectLeafTasks.filter((task) => task.status === "CLOSED").length; const overdue = projectLeafTasks.filter((task) => task.status !== "CLOSED" && dayjs(task.deadline).isBefore(dayjs())).length; const progress = total ? Math.round((closed / total) * 100) : 0; return <Box key={project.id} onClick={() => navigate(`/projects/${project.id}`)} sx={{ cursor: "pointer" }}><Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 0.75, gap: 2 }}><Typography sx={{ fontWeight: 900 }}>{project.title} →</Typography><Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>{overdue ? <Chip size="small" color="error" label={`${overdue} depășite`} /> : null}<Typography sx={{ color: "text.secondary" }}>{closed}/{total}</Typography><Typography sx={{ color: accent.text, fontWeight: 950 }}>{progress}%</Typography></Stack></Stack><Box sx={{ height: 10, borderRadius: 99, bgcolor: "divider", overflow: "hidden" }}><Box sx={{ width: `${progress}%`, height: "100%", bgcolor: progress === 100 ? "#111827" : accent.value }} /></Box></Box>; })}{projects.length === 0 ? <Typography sx={{ color: "text.secondary" }}>Nu există proiecte.</Typography> : null}</Stack></CardContent></Card>
 
         <GanttChart
           title="Diagrama Gantt"

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.task import Task
 from app.services.assignments_service import list_assignments
 from app.services.notification_service import notify_ready_to_close
+from app.services.tasks_service import recompute_parent_status_chain
 
 
 def recompute_task_status(db: Session, task: Task) -> Task:
@@ -32,4 +33,5 @@ def recompute_task_status(db: Session, task: Task) -> Task:
     db.refresh(task)
     if previous_status != "READY_TO_CLOSE" and task.status == "READY_TO_CLOSE":
         notify_ready_to_close(db, task)
+    recompute_parent_status_chain(db, task)
     return task

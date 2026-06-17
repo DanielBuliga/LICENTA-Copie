@@ -46,5 +46,6 @@ class TaskPublic(BaseModel):
 
 class MyTaskPublic(TaskPublic):
     project_title: str
+    parent_task_title: str | None = None
     member_status: str
     assigned_minutes: int | None = None
