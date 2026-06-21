@@ -8,6 +8,8 @@ from app.schemas.dependency import DependencyCreate, DependencyPublic
 from app.services.projects_service import is_member
 from app.services.tasks_service import get_task
 from app.services.dependencies_service import list_dependencies, create_dependency, delete_dependency
+from app.services.activity_service import log_project_activity
+from app.services.notification_service import notify_plan_impact
 from app.utils.graph import would_create_cycle
 
 router = APIRouter(prefix="/projects/{project_id}/dependencies", tags=["dependencies"])
@@ -59,12 +61,33 @@ def add_dep(
     if would_create_cycle(edges, (payload.predecessor_task_id, payload.successor_task_id)):
         raise HTTPException(status_code=400, detail="Dependency would create a cycle")
 
-    return create_dependency(
+    dependency = create_dependency(
         db,
         project_id=project_id,
         predecessor_task_id=payload.predecessor_task_id,
         successor_task_id=payload.successor_task_id,
     )
+    log_project_activity(
+        db,
+        project_id,
+        "TASK_DEPENDENCY_ADDED",
+        f"Dependenta adaugata: {pred.title} -> {succ.title}",
+        actor_id=current_user.id,
+        entity_type="TASK_DEPENDENCY",
+        entity_id=dependency.id,
+    )
+    notify_plan_impact(
+        db,
+        project_id=project_id,
+        title="Relatie de precedenta modificata",
+        body=(
+            f"A fost adaugata dependenta {pred.title} -> {succ.title}. "
+            "Ordinea de planificare se poate schimba; ruleaza Replanificare daca exista deja un plan generat."
+        ),
+        actor_id=current_user.id,
+        task_id=succ.id,
+    )
+    return dependency
 
 
 @router.delete("", status_code=204)
@@ -79,5 +102,27 @@ def remove_dep(
 
     require_roles(db, project_id, current_user.id, {"OWNER", "ADMIN"})
 
+    pred = get_task(db, payload.predecessor_task_id)
+    succ = get_task(db, payload.successor_task_id)
     delete_dependency(db, project_id, payload.predecessor_task_id, payload.successor_task_id)
+    log_project_activity(
+        db,
+        project_id,
+        "TASK_DEPENDENCY_REMOVED",
+        f"Dependenta eliminata: {pred.title if pred else payload.predecessor_task_id} -> {succ.title if succ else payload.successor_task_id}",
+        actor_id=current_user.id,
+        entity_type="TASK_DEPENDENCY",
+    )
+    notify_plan_impact(
+        db,
+        project_id=project_id,
+        title="Relatie de precedenta eliminata",
+        body=(
+            f"A fost eliminata dependenta {pred.title if pred else payload.predecessor_task_id} -> "
+            f"{succ.title if succ else payload.successor_task_id}. "
+            "Planul existent poate permite o alta ordine; ruleaza Replanificare daca este necesar."
+        ),
+        actor_id=current_user.id,
+        task_id=succ.id if succ else None,
+    )
     return None

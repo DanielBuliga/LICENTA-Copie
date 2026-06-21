@@ -44,9 +44,9 @@ def get_or_create_preferences(db: Session, user_id: int) -> NotificationPreferen
 
 
 def should_send_for_type(prefs: NotificationPreference, notification_type: str) -> bool:
-    if notification_type in {"PROJECT_MEMBER_ADDED", "MEMBER_INACTIVE_REPLAN", "PLAN_PROBLEMS"}:
+    if notification_type in {"PROJECT_MEMBER_ADDED", "MEMBER_INACTIVE_REPLAN", "PLAN_PROBLEMS", "PLAN_IMPACT"}:
         return prefs.project_events_enabled
-    if notification_type == "TASK_ASSIGNED":
+    if notification_type in {"TASK_ASSIGNED", "TASK_CHANGED", "TASK_REPLANNED", "TASK_UNASSIGNED"}:
         return prefs.assignment_events_enabled
     if notification_type == "PROJECT_MESSAGE":
         return prefs.message_events_enabled
@@ -146,6 +146,73 @@ def notify_task_assigned(db: Session, task: Task, user_id: int) -> None:
     )
 
 
+def notify_task_changed(
+    db: Session,
+    task: Task,
+    changed_labels: list[str],
+    actor_id: int | None = None,
+) -> None:
+    if not changed_labels:
+        return
+    assignments = db.query(TaskAssignment).filter(TaskAssignment.task_id == task.id).all()
+    if not assignments:
+        return
+    project = db.query(Project).filter(Project.id == task.project_id).first()
+    changed_text = ", ".join(changed_labels)
+    for assignment in assignments:
+        create_notification(
+            db,
+            user_id=assignment.user_id,
+            notification_type="TASK_CHANGED",
+            title=f"Task modificat: {task.title}",
+            body=(
+                f"Taskul {task.title} din proiectul {project.title if project else 'proiect'} "
+                f"a fost modificat: {changed_text}."
+            ),
+            project_id=task.project_id,
+            task_id=task.id,
+        )
+
+
+def notify_task_unassigned(db: Session, task: Task, user_id: int) -> None:
+    project = db.query(Project).filter(Project.id == task.project_id).first()
+    create_notification(
+        db,
+        user_id=user_id,
+        notification_type="TASK_UNASSIGNED",
+        title=f"Nu mai esti responsabil pentru: {task.title}",
+        body=f"Ai fost scos de pe taskul {task.title} din proiectul {project.title if project else 'proiect'}.",
+        project_id=task.project_id,
+        task_id=task.id,
+    )
+
+
+def notify_task_replanned(
+    db: Session,
+    task: Task,
+    user_id: int,
+    old_schedule: str | None,
+    new_schedule: str | None,
+) -> None:
+    project = db.query(Project).filter(Project.id == task.project_id).first()
+    if old_schedule and new_schedule:
+        body = f"Taskul {task.title} a fost replanificat: {old_schedule} -> {new_schedule}."
+    elif new_schedule:
+        body = f"Taskul {task.title} a fost adaugat in calendar: {new_schedule}."
+    else:
+        body = f"Taskul {task.title} nu mai are interval planificat in calendar."
+    body += f" Proiect: {project.title if project else 'proiect'}."
+    create_notification(
+        db,
+        user_id=user_id,
+        notification_type="TASK_REPLANNED",
+        title=f"Calendar actualizat: {task.title}",
+        body=body,
+        project_id=task.project_id,
+        task_id=task.id,
+    )
+
+
 def notify_project_message(db: Session, project_id: int, message_id: int, sender_id: int, sender_name: str | None, preview: str) -> None:
     project = db.query(Project).filter(Project.id == project_id).first()
     members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id, ProjectMember.user_id != sender_id, ProjectMember.status == "ACTIVE").all()
@@ -203,6 +270,33 @@ def notify_plan_problems(db: Session, project_id: int, problems: list[object]) -
             body=body,
             project_id=project_id,
             event_key=f"project:{project_id}:plan-problems:{signature}:{manager.user_id}",
+        )
+
+
+def notify_plan_impact(
+    db: Session,
+    project_id: int,
+    title: str,
+    body: str,
+    actor_id: int | None = None,
+    task_id: int | None = None,
+) -> None:
+    managers = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == project_id, ProjectMember.role.in_(["OWNER", "ADMIN"]), ProjectMember.status == "ACTIVE")
+        .all()
+    )
+    for manager in managers:
+        if actor_id is not None and manager.user_id == actor_id:
+            continue
+        create_notification(
+            db,
+            user_id=manager.user_id,
+            notification_type="PLAN_IMPACT",
+            title=title,
+            body=body,
+            project_id=project_id,
+            task_id=task_id,
         )
 
 

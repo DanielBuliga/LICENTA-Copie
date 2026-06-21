@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from "react";
-import { Link as RouterLink, useParams } from "react-router-dom";
+import { Link as RouterLink, useParams, useSearchParams } from "react-router-dom";
 import { Alert, Box, IconButton, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
@@ -27,6 +27,8 @@ import { ActivityTab } from "./project/ActivityTab";
 
 type ProjectPublic = { id: number; title: string; description: string | null; created_by: number; created_at: string };
 
+const tabKeys = ["descriere", "dashboard", "taskuri", "plan", "problems", "membrii", "istoric", "documents", "export"];
+
 function TabPanel(props: { value: number; index: number; children: React.ReactNode }) {
   if (props.value !== props.index) return null;
   return <Box sx={{ mt: 2 }}>{props.children}</Box>;
@@ -34,10 +36,12 @@ function TabPanel(props: { value: number; index: number; children: React.ReactNo
 
 export function ProjectDetailsPage() {
   const params = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const projectId = Number(params.id);
   const [project, setProject] = useState<ProjectPublic | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState(0);
+  const tabFromUrl = tabKeys.indexOf(searchParams.get("tab") ?? "");
+  const tab = tabFromUrl >= 0 ? tabFromUrl : 0;
 
   const loadProject = useCallback(async () => {
     setError(null);
@@ -58,7 +62,7 @@ export function ProjectDetailsPage() {
     <AppLayout title={headerTitle}>
       {error ? <Alert severity="error">{error}</Alert> : null}
       <Box sx={{ mt: 2 }}>
-        <ToggleButtonGroup exclusive value={tab} onChange={(_, value) => { if (value !== null) setTab(value); }} sx={{ bgcolor: "background.paper", borderRadius: 2, p: 0.5, border: "1px solid", borderColor: "divider", flexWrap: "wrap", "& .MuiToggleButton-root": { border: 0, borderRadius: 1.5, px: 2, gap: 0.75, fontWeight: 800, color: "text.secondary", "&.Mui-selected": { bgcolor: "background.default", color: "text.primary", boxShadow: "0 4px 14px rgba(15,23,42,0.08)" } } }}>
+        <ToggleButtonGroup exclusive value={tab} onChange={(_, value) => { if (value !== null) setSearchParams({ tab: tabKeys[value] }); }} sx={{ bgcolor: "background.paper", borderRadius: 2, p: 0.5, border: "1px solid", borderColor: "divider", flexWrap: "wrap", "& .MuiToggleButton-root": { border: 0, borderRadius: 1.5, px: 2, gap: 0.75, fontWeight: 800, color: "text.secondary", "&.Mui-selected": { bgcolor: "background.default", color: "text.primary", boxShadow: "0 4px 14px rgba(15,23,42,0.08)" } } }}>
           <ToggleButton value={0}><DescriptionOutlinedIcon fontSize="small" /> Descriere</ToggleButton>
           <ToggleButton value={1}><DashboardOutlinedIcon fontSize="small" /> Tablou de bord</ToggleButton>
           <ToggleButton value={2}><CheckBoxOutlinedIcon fontSize="small" /> Taskuri</ToggleButton>

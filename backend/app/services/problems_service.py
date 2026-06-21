@@ -114,4 +114,33 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
         key = (p["task_id"], p["type"], p["reason"])
         unique[key] = p
 
-    return list(unique.values())
+    priority = {
+        "INACTIVE_MEMBER": 0,
+        "NO_SKILLS": 1,
+        "BLOCKED": 2,
+        "AT_RISK": 3,
+    }
+    grouped: dict[int, dict] = {}
+    for p in unique.values():
+        task_id = p["task_id"]
+        current = grouped.get(task_id)
+        if current is None:
+            grouped[task_id] = {
+                **p,
+                "types": [p["type"]],
+                "reasons": [p["reason"]],
+            }
+            continue
+
+        if p["type"] not in current["types"]:
+            current["types"].append(p["type"])
+        if p["reason"] not in current["reasons"]:
+            current["reasons"].append(p["reason"])
+        if priority.get(p["type"], 99) < priority.get(current["type"], 99):
+            current["type"] = p["type"]
+            current["reason"] = p["reason"]
+
+    for item in grouped.values():
+        item["types"].sort(key=lambda value: priority.get(value, 99))
+
+    return list(grouped.values())

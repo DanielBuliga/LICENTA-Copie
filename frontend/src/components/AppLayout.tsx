@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Avatar,
   Badge,
@@ -28,9 +28,9 @@ import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneR
 import DoneAllRoundedIcon from "@mui/icons-material/DoneAllRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
-import dayjs from "dayjs";
 import { api } from "../api/api";
 import { clearToken, getToken } from "../api/auth";
+import { apiDate } from "../utils/dateTime";
 
 type Props = {
   title?: ReactNode;
@@ -82,6 +82,7 @@ export function AppLayout({ title, children }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsAnchor, setNotificationsAnchor] = useState<null | HTMLElement>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const notificationsRefreshTimer = useRef<number | null>(null);
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
 
   const loadUser = useCallback(async () => {
@@ -121,9 +122,29 @@ export function AppLayout({ title, children }: Props) {
     void loadNotifications();
     const interval = window.setInterval(() => {
       void loadNotifications();
-    }, 30_000);
+    }, 10_000);
 
     return () => window.clearInterval(interval);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    function refreshSoon() {
+      if (notificationsRefreshTimer.current) {
+        window.clearTimeout(notificationsRefreshTimer.current);
+      }
+      notificationsRefreshTimer.current = window.setTimeout(() => {
+        void loadNotifications();
+        notificationsRefreshTimer.current = null;
+      }, 350);
+    }
+
+    window.addEventListener("smartplanner:notifications-refresh", refreshSoon);
+    return () => {
+      window.removeEventListener("smartplanner:notifications-refresh", refreshSoon);
+      if (notificationsRefreshTimer.current) {
+        window.clearTimeout(notificationsRefreshTimer.current);
+      }
+    };
   }, [loadNotifications]);
 
   function onLogout() {
@@ -456,7 +477,7 @@ export function AppLayout({ title, children }: Props) {
                         {notification.body}
                       </Typography>
                       <Typography sx={{ color: "text.disabled", fontSize: 12, mt: 0.75 }}>
-                        {dayjs(notification.created_at).format("DD MMM YYYY, HH:mm")}
+                        {apiDate(notification.created_at).format("DD MMM YYYY, HH:mm")}
                       </Typography>
                     </Box>
                   </Stack>

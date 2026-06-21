@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Card, CardContent, Chip, LinearProgress, Stack, Typography } from "@mui/material";
-import dayjs from "dayjs";
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
+import { apiDate } from "../../utils/dateTime";
 
 type ProblemItem = {
   task_id: number;
   task_title?: string | null;
   task_path?: string | null;
   type: string;
+  types?: string[] | null;
   reason: string;
+  reasons?: string[] | null;
   deadline: string;
+};
+
+const problemColors: Record<string, "default" | "primary" | "secondary" | "success" | "warning" | "error" | "info"> = {
+  INACTIVE_MEMBER: "error",
+  AT_RISK: "warning",
+  BLOCKED: "secondary",
+  NO_SKILLS: "info",
 };
 
 export function ProblemsTab({ projectId }: { projectId: number }) {
@@ -43,15 +52,23 @@ export function ProblemsTab({ projectId }: { projectId: number }) {
       {items.map((problem) => (
         <Card key={`${problem.task_id}-${problem.type}-${problem.reason}`}>
           <CardContent sx={{ p: 2.5 }}>
-            <Stack direction="row" sx={{ justifyContent: "space-between", gap: 1 }}>
+            <Stack direction="row" sx={{ justifyContent: "space-between", gap: 1, alignItems: "flex-start" }}>
               <Typography sx={{ fontWeight: 800 }}>
                 {problem.task_path || problem.task_title || `Task #${problem.task_id}`}
               </Typography>
-              <Chip label={problem.type} color="warning" size="small" />
+              <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {(problem.types?.length ? problem.types : [problem.type]).map((type) => (
+                  <Chip key={type} label={type} color={problemColors[type] ?? "warning"} size="small" sx={{ fontWeight: 900 }} />
+                ))}
+              </Stack>
             </Stack>
-            <Typography sx={{ mt: 1 }}>{problem.reason}</Typography>
+            <Stack spacing={0.5} sx={{ mt: 1 }}>
+              {(problem.reasons?.length ? problem.reasons : [problem.reason]).map((reason) => (
+                <Typography key={reason}>{reason}</Typography>
+              ))}
+            </Stack>
             <Typography sx={{ color: "text.secondary", mt: 0.5 }}>
-              Deadline: {dayjs(problem.deadline).format("DD.MM.YYYY HH:mm")}
+              Deadline: {apiDate(problem.deadline).format("DD.MM.YYYY HH:mm")}
             </Typography>
           </CardContent>
         </Card>

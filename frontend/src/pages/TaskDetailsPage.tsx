@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from "react";
-import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, IconButton, LinearProgress, Stack, Typography } from "@mui/material";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import AccountTreeRoundedIcon from "@mui/icons-material/AccountTreeRounded";
@@ -13,9 +13,14 @@ import dayjs from "dayjs";
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
+import { apiDate } from "../utils/dateTime";
 import type { ProjectDocument } from "./project/DocumentsTab";
 
-type MyTask = { id: number; project_id: number; project_title: string; parent_task_id: number | null; parent_task_title?: string | null; title: string; description: string | null; priority: number; estimate_minutes: number; deadline: string; status: string; member_status: string; assigned_minutes: number | null };
+type MyTask = { id: number; project_id: number; project_title: string; parent_task_id: number | null; parent_task_title?: string | null; title: string; description: string | null; priority: number; estimate_minutes: number; deadline: string; status: string; member_status?: string | null; assigned_minutes?: number | null };
+type TaskPublic = { id: number; project_id: number; parent_task_id: number | null; title: string; description: string | null; priority: number; estimate_minutes: number; deadline: string; status: string };
+type ProjectPublic = { id: number; title: string };
+type CurrentUser = { id: number; email: string; name?: string | null };
+type ProjectMember = { user_id: number; role: "OWNER" | "ADMIN" | "MEMBER"; status?: "ACTIVE" | "INACTIVE" };
 
 function formatMinutes(minutes: number) {
   if (minutes < 60) return `${minutes} min`;
@@ -30,6 +35,7 @@ export function TaskDetailsPage() {
   const taskId = Number(params.taskId);
   const [task, setTask] = useState<MyTask | null>(null);
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
+  const [myRole, setMyRole] = useState<ProjectMember["role"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,13 +44,40 @@ export function TaskDetailsPage() {
     setError(null);
     try {
       const res = await api.get<MyTask[]>("/users/me/tasks");
-      const found = res.data.find((item) => item.id === taskId) ?? null;
+      let found = res.data.find((item) => item.id === taskId) ?? null;
+
+      if (!found) {
+        const taskRes = await api.get<TaskPublic>(`/tasks/${taskId}`);
+        const taskData = taskRes.data;
+        const [projectRes, projectTasksRes] = await Promise.all([
+          api.get<ProjectPublic>(`/projects/${taskData.project_id}`),
+          api.get<TaskPublic[]>(`/projects/${taskData.project_id}/tasks`),
+        ]);
+        const parent = taskData.parent_task_id
+          ? projectTasksRes.data.find((item) => item.id === taskData.parent_task_id)
+          : null;
+        found = {
+          ...taskData,
+          project_title: projectRes.data.title,
+          parent_task_title: parent?.title ?? null,
+          member_status: null,
+          assigned_minutes: null,
+        };
+      }
+
       setTask(found);
       if (found) {
-        const docs = await api.get<ProjectDocument[]>(`/projects/${found.project_id}/documents`, { params: { task_id: found.id } });
+        const [docs, meRes, membersRes] = await Promise.all([
+          api.get<ProjectDocument[]>(`/projects/${found.project_id}/documents`, { params: { task_id: found.id } }),
+          api.get<CurrentUser>("/users/me"),
+          api.get<ProjectMember[]>(`/projects/${found.project_id}/members`),
+        ]);
         setDocuments(docs.data);
+        const member = membersRes.data.find((item) => item.user_id === meRes.data.id);
+        setMyRole(member?.role ?? null);
       } else {
         setDocuments([]);
+        setMyRole(null);
       }
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca detaliile task-ului"));
@@ -73,9 +106,24 @@ export function TaskDetailsPage() {
     }
   }
 
+  async function closeTask() {
+    if (!task) return;
+    if (!window.confirm("Confirmi închiderea acestui task? După închidere, taskul este considerat finalizat.")) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await api.post(`/tasks/${task.id}/close`);
+      await load();
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Nu am putut închide taskul"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const headerTitle = (
     <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-      <IconButton onClick={() => nav("/activities")} aria-label="Înapoi la activități"><ArrowBackRoundedIcon /></IconButton>
+      <IconButton onClick={() => nav(-1)} aria-label="Înapoi"><ArrowBackRoundedIcon /></IconButton>
       <Typography variant="h4">Detalii activitate</Typography>
     </Stack>
   );
@@ -86,7 +134,7 @@ export function TaskDetailsPage() {
         {loading ? <LinearProgress /> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
         {!loading && !task ? (
-          <Card><CardContent sx={{ p: 4, textAlign: "center" }}><Typography variant="h6">Task-ul nu a fost găsit în activitățile tale.</Typography><Button sx={{ mt: 2 }} variant="contained" component={RouterLink} to="/activities">Înapoi la activități</Button></CardContent></Card>
+          <Card><CardContent sx={{ p: 4, textAlign: "center" }}><Typography variant="h6">Task-ul nu a fost găsit sau nu ai acces la el.</Typography><Button sx={{ mt: 2 }} variant="contained" onClick={() => nav(-1)}>Înapoi</Button></CardContent></Card>
         ) : null}
 
         {task ? (
@@ -100,16 +148,23 @@ export function TaskDetailsPage() {
                       <Chip icon={<FolderRoundedIcon />} label={task.project_title} sx={{ fontWeight: 800 }} />
                       {task.parent_task_title ? <Chip icon={<AccountTreeRoundedIcon />} label={task.parent_task_title} sx={{ fontWeight: 800 }} /> : null}
                       <Chip label={`Status proiect: ${task.status}`} sx={{ fontWeight: 800 }} />
-                      <Chip label={`Statusul meu: ${task.member_status}`} color={task.member_status === "DONE" ? "success" : "default"} sx={{ fontWeight: 800 }} />
+                      {task.member_status ? <Chip label={`Statusul meu: ${task.member_status}`} color={task.member_status === "DONE" ? "success" : "default"} sx={{ fontWeight: 800 }} /> : null}
                     </Stack>
                   </Box>
                   <Divider />
                   <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ flexWrap: "wrap" }}>
                     <Chip label={`Prioritate P${task.priority}`} sx={{ fontWeight: 800 }} />
                     <Chip icon={<ScheduleRoundedIcon />} label={`Estimare: ${formatMinutes(task.estimate_minutes)}`} sx={{ fontWeight: 800 }} />
-                    <Chip icon={<ScheduleRoundedIcon />} label={`Timp asignat: ${formatMinutes(task.assigned_minutes ?? task.estimate_minutes)}`} sx={{ fontWeight: 800 }} />
-                    <Chip icon={<EventRoundedIcon />} label={`Deadline: ${dayjs(task.deadline).format("DD MMM YYYY, HH:mm")}`} color={dayjs(task.deadline).isBefore(dayjs()) && task.member_status !== "DONE" ? "error" : "default"} variant="outlined" sx={{ fontWeight: 800 }} />
+                    {task.assigned_minutes !== null && task.assigned_minutes !== undefined ? <Chip icon={<ScheduleRoundedIcon />} label={`Timp asignat: ${formatMinutes(task.assigned_minutes)}`} sx={{ fontWeight: 800 }} /> : null}
+                    <Chip icon={<EventRoundedIcon />} label={`Deadline: ${apiDate(task.deadline).format("DD MMM YYYY, HH:mm")}`} color={apiDate(task.deadline).isBefore(dayjs()) && task.member_status !== "DONE" ? "error" : "default"} variant="outlined" sx={{ fontWeight: 800 }} />
                   </Stack>
+                  {myRole === "OWNER" && task.status === "READY_TO_CLOSE" ? (
+                    <Box>
+                      <Button variant="contained" color="success" onClick={() => void closeTask()} disabled={loading}>
+                        Închide task
+                      </Button>
+                    </Box>
+                  ) : null}
                 </Stack>
               </CardContent>
             </Card>

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Box, Card, CardContent, Chip, LinearProgress, Stack, Typography } from "@mui/material";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
-import dayjs from "dayjs";
 
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
+import { apiDate, formatApiDate } from "../../utils/dateTime";
 
 type ActivityItem = {
   id: number;
@@ -18,6 +18,11 @@ type ActivityItem = {
   title: string;
   details?: string | null;
   created_at: string;
+};
+
+type TaskItem = {
+  id: number;
+  title: string;
 };
 
 const eventLabels: Record<string, string> = {
@@ -56,8 +61,34 @@ const eventColors: Record<string, "default" | "primary" | "secondary" | "success
   PLAN_GENERATED: "primary",
 };
 
+const changeChipMeta: Record<string, { label: string; color: "default" | "primary" | "secondary" | "success" | "warning" | "error" | "info" }> = {
+  "estimare:": { label: "Estimare", color: "info" },
+  "deadline:": { label: "Deadline", color: "error" },
+  "prioritate:": { label: "Prioritate", color: "warning" },
+  "parinte:": { label: "Părinte", color: "secondary" },
+  "status:": { label: "Status", color: "success" },
+  "titlu:": { label: "Titlu", color: "default" },
+};
+
+function changeChipsFor(item: ActivityItem) {
+  if (!item.details || !item.event_type.startsWith("TASK_")) return [];
+  const primaryLabel = eventLabels[item.event_type];
+  return Object.entries(changeChipMeta)
+    .filter(([needle]) => item.details?.includes(needle))
+    .filter(([, meta]) => meta.label !== primaryLabel)
+    .map(([, meta]) => meta);
+}
+
+function formatActivityDetails(details: string) {
+  return details.replace(
+    /\b(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?\b/g,
+    (_match, date: string, time: string) => formatApiDate(`${date}T${time}`, "DD.MM.YYYY HH:mm")
+  );
+}
+
 export function ActivityTab({ projectId }: { projectId: number }) {
   const [items, setItems] = useState<ActivityItem[]>([]);
+  const [tasksById, setTasksById] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,8 +96,12 @@ export function ActivityTab({ projectId }: { projectId: number }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<ActivityItem[]>(`/projects/${projectId}/activity`);
-      setItems(res.data);
+      const [activityRes, tasksRes] = await Promise.all([
+        api.get<ActivityItem[]>(`/projects/${projectId}/activity`),
+        api.get<TaskItem[]>(`/projects/${projectId}/tasks`),
+      ]);
+      setItems(activityRes.data);
+      setTasksById(Object.fromEntries(tasksRes.data.map((task) => [task.id, task.title])));
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca istoricul proiectului"));
     } finally {
@@ -81,7 +116,7 @@ export function ActivityTab({ projectId }: { projectId: number }) {
   const grouped = useMemo(() => {
     const byDay: Record<string, ActivityItem[]> = {};
     for (const item of items) {
-      const key = dayjs(item.created_at).format("DD MMMM YYYY");
+      const key = apiDate(item.created_at).format("DD MMMM YYYY");
       byDay[key] = [...(byDay[key] ?? []), item];
     }
     return Object.entries(byDay);
@@ -109,6 +144,7 @@ export function ActivityTab({ projectId }: { projectId: number }) {
           <Typography sx={{ color: "text.secondary", fontWeight: 900, px: 0.5 }}>{day}</Typography>
           {dayItems.map((item) => {
             const actor = item.actor_name || item.actor_email || (item.actor_id ? `User #${item.actor_id}` : "Sistem");
+            const changeChips = changeChipsFor(item);
             return (
               <Card key={item.id}>
                 <CardContent sx={{ p: 2.5 }}>
@@ -116,12 +152,23 @@ export function ActivityTab({ projectId }: { projectId: number }) {
                     <Box sx={{ minWidth: 0 }}>
                       <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center", mb: 0.75 }}>
                         <Chip size="small" color={eventColors[item.event_type] ?? "default"} label={eventLabels[item.event_type] ?? item.event_type} sx={{ fontWeight: 900 }} />
+                        {changeChips.map((chip) => (
+                          <Chip key={chip.label} size="small" color={chip.color} variant="outlined" label={chip.label} sx={{ fontWeight: 900 }} />
+                        ))}
                         <Typography sx={{ color: "text.secondary", fontSize: 13 }}>
-                          {dayjs(item.created_at).format("HH:mm")} · {actor}
+                          {apiDate(item.created_at).format("HH:mm")} · {actor}
                         </Typography>
                       </Stack>
                       <Typography sx={{ fontWeight: 950 }}>{item.title}</Typography>
-                      {item.details ? <Typography sx={{ color: "text.secondary", mt: 0.5 }}>{item.details}</Typography> : null}
+                      {item.details ? (
+                        <Typography sx={{ color: "text.secondary", mt: 0.5 }}>
+                          {formatActivityDetails(item.details).replace(
+                            /parinte: (fara|\d+) -> (fara|\d+)/g,
+                            (_match, from: string, to: string) =>
+                              `parinte: ${from === "fara" ? "fara" : tasksById[Number(from)] ?? `Task #${from}`} -> ${to === "fara" ? "fara" : tasksById[Number(to)] ?? `Task #${to}`}`
+                          )}
+                        </Typography>
+                      ) : null}
                     </Box>
                   </Stack>
                 </CardContent>

@@ -1,6 +1,7 @@
 import { Box, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import dayjs from "dayjs";
+import { apiDate } from "../utils/dateTime";
 import type { TaskStatus } from "../api/types";
 import { getProjectColor, projectPalette } from "../utils/projectColors";
 
@@ -32,18 +33,18 @@ function statusLabel(status: string) {
 }
 
 function taskStart(task: GanttTask) {
-  const created = dayjs(task.created_at);
+  const created = apiDate(task.created_at);
   if (created.isValid()) return created.startOf("day");
-  return dayjs(task.deadline).subtract(Math.max(1, Math.ceil(task.priority)), "day").startOf("day");
+  return apiDate(task.deadline).subtract(Math.max(1, Math.ceil(task.priority)), "day").startOf("day");
 }
 
 export function GanttChart({ title, subtitle, tasks, compact = false }: Props) {
   const visibleTasks = [...tasks]
-    .filter((task) => dayjs(task.deadline).isValid())
-    .sort((a, b) => dayjs(a.deadline).valueOf() - dayjs(b.deadline).valueOf());
+    .filter((task) => apiDate(task.deadline).isValid())
+    .sort((a, b) => apiDate(a.deadline).valueOf() - apiDate(b.deadline).valueOf());
 
   const starts = visibleTasks.map(taskStart);
-  const ends = visibleTasks.map((task) => dayjs(task.deadline).endOf("day"));
+  const ends = visibleTasks.map((task) => apiDate(task.deadline).endOf("day"));
   const minDate = (starts.length ? dayjs(Math.min(...starts.map((item) => item.valueOf()))) : dayjs()).startOf("day");
   const maxDate = (ends.length ? dayjs(Math.max(...ends.map((item) => item.valueOf()))) : dayjs().add(7, "day")).endOf("day");
   const totalDays = Math.max(maxDate.diff(minDate, "day") + 1, 1);
@@ -97,13 +98,13 @@ export function GanttChart({ title, subtitle, tasks, compact = false }: Props) {
               <Stack spacing={1}>
                 {visibleTasks.map((task) => {
                   const start = taskStart(task);
-                  const end = dayjs(task.deadline).endOf("day");
+                  const end = apiDate(task.deadline).endOf("day");
                   const offset = Math.max(start.diff(minDate, "day"), 0);
                   const duration = Math.max(end.diff(start, "day") + 1, 1);
                   const left = `${(offset / totalDays) * 100}%`;
                   const width = `${Math.max((duration / totalDays) * 100, 2)}%`;
                   const color = colorForProject(task.project_id);
-                  const overdue = task.status !== "CLOSED" && dayjs(task.deadline).isBefore(dayjs());
+                  const overdue = task.status !== "CLOSED" && apiDate(task.deadline).isBefore(dayjs());
 
                   return (
                     <Box key={`${task.project_id}-${task.id}`} sx={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 1.5, alignItems: "center" }}>

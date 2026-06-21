@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import dayjs from "dayjs";
+import { apiDate } from "../utils/dateTime";
 import type { TaskPublic } from "../api/types";
 import { getProjectColor } from "../utils/projectColors";
 
@@ -68,7 +69,7 @@ function loadGoogleCharts() {
 }
 
 function asDate(value: string) {
-  const parsed = dayjs(value);
+  const parsed = apiDate(value);
   return parsed.isValid() ? parsed.toDate() : new Date();
 }
 
@@ -108,9 +109,9 @@ function buildVisualSchedule(tasks: TaskPublic[], dependencies: DependencyItem[]
     const cached = memo.get(task.id);
     if (cached) return cached;
 
-    const deadline = dayjs(task.deadline);
+    const deadline = apiDate(task.deadline);
     const estimateMinutes = durationMinutes(task);
-    let start = dayjs(task.created_at).isValid() ? dayjs(task.created_at) : deadline.subtract(estimateMinutes, "minute");
+    let start = apiDate(task.created_at).isValid() ? apiDate(task.created_at) : deadline.subtract(estimateMinutes, "minute");
 
     if (!visiting.has(task.id)) {
       visiting.add(task.id);

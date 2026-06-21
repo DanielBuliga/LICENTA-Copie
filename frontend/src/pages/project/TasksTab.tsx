@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -34,11 +35,16 @@ import MoreVertRoundedIcon from "@mui/icons-material/MoreVertRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import AccountTreeRoundedIcon from "@mui/icons-material/AccountTreeRounded";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
+import KeyboardArrowRightRoundedIcon from "@mui/icons-material/KeyboardArrowRightRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import dayjs, { Dayjs } from "dayjs";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
 import { useAccentColor } from "../../hooks/useAccentColor";
+import { apiDate } from "../../utils/dateTime";
 
 type TaskStatus = "OPEN" | "IN_PROGRESS" | "READY_TO_CLOSE" | "CLOSED";
 type MemberStatus = "TODO" | "IN_PROGRESS" | "DONE";
@@ -140,6 +146,7 @@ type TaskNode = TaskPublic & {
 
 export function TasksTab({ projectId }: { projectId: number }) {
   const accent = useAccentColor();
+  const nav = useNavigate();
   const [items, setItems] = useState<TaskPublic[]>([]);
   const [assignmentsByTask, setAssignmentsByTask] = useState<Record<number, AssignmentItem[]>>({});
   const [membersById, setMembersById] = useState<Record<number, MemberItem>>({});
@@ -147,9 +154,11 @@ export function TasksTab({ projectId }: { projectId: number }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [planImpactMessage, setPlanImpactMessage] = useState<string | null>(null);
   const [extractingTaskId, setExtractingTaskId] = useState<number | null>(null);
   const [actionsAnchor, setActionsAnchor] = useState<HTMLElement | null>(null);
   const [actionsTask, setActionsTask] = useState<TaskPublic | null>(null);
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<number>>(new Set());
 
   const [myRole, setMyRole] = useState<MemberItem["role"] | null>(null);
   const canManage = myRole === "OWNER" || myRole === "ADMIN";
@@ -167,6 +176,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
   const [deadline, setDeadline] = useState<Dayjs | null>(
     dayjs().add(3, "day").hour(21).minute(0).second(0)
   );
+  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([]);
 
   const canSubmit = useMemo(() => {
     if (!canManage) return false;
@@ -185,7 +195,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
     });
 
     childrenByParent.forEach((children) => {
-      children.sort((a, b) => dayjs(a.deadline).valueOf() - dayjs(b.deadline).valueOf() || a.title.localeCompare(b.title));
+      children.sort((a, b) => apiDate(a.deadline).valueOf() - apiDate(b.deadline).valueOf() || a.title.localeCompare(b.title));
     });
 
     const aggregateEstimate = (task: TaskPublic): number => {
@@ -199,7 +209,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       if (children.length === 0) return task.deadline;
       const childDeadlines = children.map((child) => aggregateDeadline(child));
       return childDeadlines.reduce((latest, current) =>
-        dayjs(current).isAfter(dayjs(latest)) ? current : latest
+        apiDate(current).isAfter(apiDate(latest)) ? current : latest
       );
     };
 
@@ -225,6 +235,23 @@ export function TasksTab({ projectId }: { projectId: number }) {
     [editingTask, taskTree]
   );
 
+  const visibleTaskTree = useMemo(() => {
+    const visible: TaskNode[] = [];
+    const collapsedDepths = new Set<number>();
+    for (const task of taskTree) {
+      const hidden = Array.from(collapsedDepths).some((depth) => task.depth > depth);
+      if (hidden) continue;
+      Array.from(collapsedDepths).forEach((depth) => {
+        if (task.depth <= depth) collapsedDepths.delete(depth);
+      });
+      visible.push(task);
+      if (task.hasChildren && !expandedTaskIds.has(task.id)) {
+        collapsedDepths.add(task.depth);
+      }
+    }
+    return visible;
+  }, [expandedTaskIds, taskTree]);
+
   function resetForm() {
     setEditingTask(null);
     setTitle("");
@@ -233,6 +260,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setPriority(3);
     setEstimateMinutes(60);
     setDeadline(dayjs().add(3, "day").hour(21).minute(0).second(0));
+    setAssignedUserIds([]);
   }
 
   function openEditDialog(task: TaskPublic) {
@@ -244,7 +272,8 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setParentTaskId(task.parent_task_id ? String(task.parent_task_id) : "");
     setPriority(task.priority);
     setEstimateMinutes(task.estimate_minutes);
-    setDeadline(dayjs(task.deadline));
+    setDeadline(apiDate(task.deadline));
+    setAssignedUserIds((assignmentsByTask[task.id] ?? []).map((assignment) => String(assignment.user_id)));
     setOpenDialog(true);
   }
 
@@ -256,6 +285,15 @@ export function TasksTab({ projectId }: { projectId: number }) {
   function closeActions() {
     setActionsAnchor(null);
     setActionsTask(null);
+  }
+
+  function toggleExpanded(taskId: number) {
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
   }
 
   const loadRole = useCallback(async () => {
@@ -298,11 +336,46 @@ export function TasksTab({ projectId }: { projectId: number }) {
     }
   }, [projectId]);
 
+  const activeMembers = useMemo(
+    () => Object.values(membersById).filter((member) => member.status !== "INACTIVE"),
+    [membersById]
+  );
+
+  async function syncAssignments(taskId: number, desiredUserIds: string[]) {
+    const desired = new Set(desiredUserIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+    const current = new Set((assignmentsByTask[taskId] ?? []).map((assignment) => assignment.user_id));
+
+    await Promise.all([
+      ...Array.from(current)
+        .filter((userId) => !desired.has(userId))
+        .map((userId) => api.delete(`/tasks/${taskId}/assignments/${userId}`)),
+      ...Array.from(desired)
+        .filter((userId) => !current.has(userId))
+        .map((userId) => api.post(`/tasks/${taskId}/assignments`, { user_id: userId, assigned_minutes: null })),
+    ]);
+  }
+
   async function saveTask() {
     if (!canSubmit || !deadline) return;
 
     setError(null);
+    setSuccess(null);
     setLoading(true);
+
+    const isContainer = Boolean(editingTaskNode?.hasChildren);
+    const previousAssignedIds = new Set((editingTask ? assignmentsByTask[editingTask.id] ?? [] : []).map((assignment) => String(assignment.user_id)));
+    const desiredAssignedIds = new Set(assignedUserIds);
+    const assignmentsChanged =
+      !isContainer &&
+      (previousAssignedIds.size !== desiredAssignedIds.size ||
+        Array.from(previousAssignedIds).some((userId) => !desiredAssignedIds.has(userId)));
+    const planningFieldsChanged =
+      !editingTask ||
+      editingTask.priority !== priority ||
+      editingTask.estimate_minutes !== estimateMinutes ||
+      editingTask.parent_task_id !== (parentTaskId === "" ? null : Number(parentTaskId)) ||
+      (!isContainer && apiDate(editingTask.deadline).valueOf() !== deadline.valueOf()) ||
+      assignmentsChanged;
 
     const payload: TaskCreate = {
       title: title.trim(),
@@ -310,19 +383,36 @@ export function TasksTab({ projectId }: { projectId: number }) {
       parent_task_id: parentTaskId === "" ? null : Number(parentTaskId),
       priority,
       estimate_minutes: estimateMinutes,
-      deadline: editingTaskNode?.hasChildren ? editingTaskNode.aggregateDeadline : deadline.toISOString(),
+      deadline: editingTaskNode?.hasChildren ? apiDate(editingTaskNode.aggregateDeadline).toISOString() : deadline.toISOString(),
     };
 
     try {
+      let savedTask: TaskPublic;
       if (editingTask) {
-        await api.patch(`/tasks/${editingTask.id}`, payload);
+        const res = await api.patch<TaskPublic>(`/tasks/${editingTask.id}`, payload);
+        savedTask = res.data;
       } else {
-        await api.post(`/projects/${projectId}/tasks`, payload);
+        const res = await api.post<TaskPublic>(`/projects/${projectId}/tasks`, payload);
+        savedTask = res.data;
+      }
+
+      if (!isContainer) {
+        await syncAssignments(savedTask.id, assignedUserIds);
       }
 
       setOpenDialog(false);
       resetForm();
       await loadTasks();
+      if (planningFieldsChanged) {
+        setPlanImpactMessage(
+          "Modificarea poate afecta planul curent. Verifică tabul Problems sau rulează Replanificare dacă vrei ca programarea din calendar să fie actualizată."
+        );
+      }
+      setSuccess(
+        planningFieldsChanged
+          ? "Task salvat. Modificarea poate afecta planul curent; verifică tabul Problems sau rulează Replanificare dacă este necesar."
+          : "Task salvat."
+      );
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, editingTask ? "Nu am putut actualiza task-ul" : "Nu am putut crea task-ul"));
     } finally {
@@ -337,6 +427,10 @@ export function TasksTab({ projectId }: { projectId: number }) {
     try {
       await api.delete(`/tasks/${taskId}`);
       await loadTasks();
+      setPlanImpactMessage(
+        "Taskul a fost șters. Dacă exista deja un plan generat, verifică tabul Plan sau rulează Replanificare."
+      );
+      setSuccess("Task șters. Dacă exista deja un plan generat, verifică tabul Plan sau rulează Replanificare.");
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut sterge task-ul"));
     } finally {
@@ -379,6 +473,21 @@ export function TasksTab({ projectId }: { projectId: number }) {
       setError(getApiErrorMessage(err, "Nu am putut extrage skill-urile pentru task"));
     } finally {
       setExtractingTaskId(null);
+    }
+  }
+
+  async function closeTask(taskId: number) {
+    if (!window.confirm("Confirmi închiderea acestui task? După închidere, taskul este considerat finalizat.")) return;
+    setError(null);
+    setLoading(true);
+    try {
+      await api.post(`/tasks/${taskId}/close`);
+      await loadTasks();
+      setSuccess("Task închis.");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Nu am putut închide taskul"));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -437,22 +546,28 @@ export function TasksTab({ projectId }: { projectId: number }) {
           </Typography>
         )}
 
-        {taskTree.map((t) => {
+        {visibleTaskTree.map((t) => {
           const priority = priorityMeta(t.priority);
           const parentTask = t.parent_task_id ? items.find((item) => item.id === t.parent_task_id) : undefined;
           const assignments = assignmentsByTask[t.id] ?? [];
           const myAssignment = me ? assignments.find((assignment) => assignment.user_id === me.id) : undefined;
+          const isExpanded = expandedTaskIds.has(t.id);
+          const isOverdue = !["READY_TO_CLOSE", "CLOSED"].includes(t.status) && apiDate(t.aggregateDeadline).isBefore(dayjs());
 
           return (
             <Card
               key={t.id}
               variant="outlined"
+              onClick={() => nav(`/activities/${t.id}`)}
               sx={{
                 borderRadius: 3,
                 overflow: "hidden",
                 ml: { xs: 0, md: t.depth * 3 },
+                cursor: "pointer",
                 borderStyle: t.hasChildren ? "solid" : "solid",
-                bgcolor: t.hasChildren ? (theme) => (theme.palette.mode === "dark" ? alpha(accent.value, 0.08) : alpha(accent.value, 0.035)) : "background.paper",
+                bgcolor: "background.paper",
+                borderColor: t.hasChildren ? alpha(accent.value, 0.5) : undefined,
+                boxShadow: t.hasChildren ? `inset 4px 0 0 ${accent.value}` : undefined,
                 transition: "border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
                 "&:hover": {
                   borderColor: alpha(accent.value, 0.45),
@@ -467,6 +582,21 @@ export function TasksTab({ projectId }: { projectId: number }) {
                   sx={{ justifyContent: "space-between" }}
                 >
                   <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 2 }}>
+                    {t.hasChildren ? (
+                      <IconButton
+                        size="small"
+                        aria-label={isExpanded ? "Restrânge subtaskurile" : "Extinde subtaskurile"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleExpanded(t.id);
+                        }}
+                        sx={{ mt: -0.25, border: "1px solid", borderColor: "divider", flexShrink: 0 }}
+                      >
+                        {isExpanded ? <KeyboardArrowDownRoundedIcon /> : <KeyboardArrowRightRoundedIcon />}
+                      </IconButton>
+                    ) : (
+                      <Box sx={{ width: 34, flexShrink: 0 }} />
+                    )}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 900 }} title={t.title}>
                         {t.title}
@@ -484,9 +614,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
                     </Box>
                     <Chip
                       size="small"
-                      label={t.hasChildren ? "CONTAINER" : statusChipLabel(t.status)}
-                      color={statusChipColor(t.status)}
-                      variant="outlined"
+                      label={t.hasChildren ? "TASK PĂRINTE" : statusChipLabel(t.status)}
+                      color={t.hasChildren ? "info" : statusChipColor(t.status)}
+                      variant={t.hasChildren ? "filled" : "outlined"}
                       sx={{ fontWeight: 900, flexShrink: 0 }}
                     />
                   </Stack>
@@ -551,14 +681,16 @@ export function TasksTab({ projectId }: { projectId: number }) {
                         }}
                       />
                       <Chip
-                        icon={<EventRoundedIcon />}
-                        label={`${t.hasChildren ? "Deadline agregat" : "Deadline"}: ${dayjs(t.aggregateDeadline).format("DD MMM YYYY, HH:mm")}`}
+                        icon={isOverdue ? <WarningAmberRoundedIcon /> : <EventRoundedIcon />}
+                        label={`${t.hasChildren ? "Deadline agregat" : "Deadline"}: ${apiDate(t.aggregateDeadline).format("DD MMM YYYY, HH:mm")}`}
+                        color={isOverdue ? "error" : "default"}
+                        variant="outlined"
                         sx={{
                           justifyContent: "flex-start",
-                          bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#CBD5E1", 0.12) : alpha("#475569", 0.08)),
-                          color: "text.secondary",
+                          bgcolor: (theme) => isOverdue ? (theme.palette.mode === "dark" ? alpha("#EF4444", 0.16) : "#FEF2F2") : (theme.palette.mode === "dark" ? alpha("#CBD5E1", 0.12) : alpha("#475569", 0.08)),
+                          color: isOverdue ? "error.main" : "text.secondary",
                           border: "1px solid",
-                          borderColor: "divider",
+                          borderColor: isOverdue ? "error.main" : "divider",
                           fontWeight: 800,
                           "& .MuiChip-icon": { color: "inherit" },
                           maxWidth: "100%",
@@ -617,6 +749,20 @@ export function TasksTab({ projectId }: { projectId: number }) {
                       )}
 
                       <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center", ml: "auto" }}>
+                        {!t.hasChildren && myRole === "OWNER" && t.status === "READY_TO_CLOSE" ? (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void closeTask(t.id);
+                            }}
+                            disabled={loading}
+                          >
+                            Închide task
+                          </Button>
+                        ) : null}
                         {!t.hasChildren && myAssignment ? (
                           <FormControl size="small" sx={{ minWidth: 150, flexShrink: 0 }}>
                             <InputLabel id={`assignment-status-${t.id}`}>Statusul meu</InputLabel>
@@ -624,8 +770,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
                               labelId={`assignment-status-${t.id}`}
                               label="Statusul meu"
                               value={myAssignment.member_status}
+                              onClick={(event) => event.stopPropagation()}
                               onChange={(event) => void updateMyAssignmentStatus(t.id, event.target.value as MemberStatus)}
-                              disabled={loading}
+                              disabled={loading || t.status === "CLOSED"}
                             >
                               <MenuItem value="TODO">TODO</MenuItem>
                               <MenuItem value="IN_PROGRESS">IN PROGRESS</MenuItem>
@@ -636,7 +783,10 @@ export function TasksTab({ projectId }: { projectId: number }) {
 
                         {canManage ? (
                           <IconButton
-                            onClick={(event) => openActions(event, t)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openActions(event, t);
+                            }}
                             aria-label="Actiuni task"
                             sx={{ border: "1px solid", borderColor: "divider", flexShrink: 0 }}
                           >
@@ -688,6 +838,20 @@ export function TasksTab({ projectId }: { projectId: number }) {
           <ListItemText>Sterge</ListItemText>
         </MenuItem>
       </Menu>
+
+      <Dialog open={Boolean(planImpactMessage)} onClose={() => setPlanImpactMessage(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Planul poate necesita actualizare</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: "text.secondary" }}>
+            {planImpactMessage}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setPlanImpactMessage(null)}>
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} fullWidth maxWidth="sm">
         <DialogTitle>{editingTask ? "Editeaza task" : "Creeaza task"}</DialogTitle>
@@ -774,10 +938,48 @@ export function TasksTab({ projectId }: { projectId: number }) {
               P5 este cea mai urgentă, P1 cea mai puțin urgentă. Prioritatea nu înlocuiește deadline-ul, doar departajează taskuri similare.
             </Typography>
 
+            <FormControl fullWidth disabled={Boolean(editingTaskNode?.hasChildren)}>
+              <InputLabel id="assignees-label">Responsabili</InputLabel>
+              <Select
+                labelId="assignees-label"
+                label="Responsabili"
+                multiple
+                value={assignedUserIds}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setAssignedUserIds(typeof value === "string" ? value.split(",") : value);
+                }}
+                renderValue={(selected) =>
+                  selected
+                    .map((id) => {
+                      const member = membersById[Number(id)];
+                      return member?.name || member?.email || `User #${id}`;
+                    })
+                    .join(", ")
+                }
+              >
+                {activeMembers.map((member) => {
+                  const value = String(member.user_id);
+                  const label = member.name || member.email || `User #${member.user_id}`;
+                  return (
+                    <MenuItem key={member.user_id} value={value}>
+                      <Checkbox checked={assignedUserIds.includes(value)} />
+                      <ListItemText primary={label} secondary={member.role} />
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+              <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.75 }}>
+                Owner/Admin poate asigna manual taskul. Planificarea automată păstrează asignările manuale existente.
+              </Typography>
+            </FormControl>
+
             <DateTimePicker
               label={editingTaskNode?.hasChildren ? "Deadline agregat" : "Deadline"}
-              value={editingTaskNode?.hasChildren ? dayjs(editingTaskNode.aggregateDeadline) : deadline}
+              value={editingTaskNode?.hasChildren ? apiDate(editingTaskNode.aggregateDeadline) : deadline}
               onChange={(v) => setDeadline(v)}
+              ampm={false}
+              format="DD.MM.YYYY HH:mm"
               slotProps={{
                 textField: {
                   fullWidth: true,

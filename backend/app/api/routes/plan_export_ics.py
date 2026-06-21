@@ -37,6 +37,7 @@ def export_plan_ics(
     date_to: datetime = Query(..., alias="to"),
     user_id: int | None = None,
     only_planned: bool = True,
+    include_completed: bool = False,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -57,10 +58,17 @@ def export_plan_ics(
     if only_planned:
         blocks = [b for b in blocks if b.block_status == "PLANNED"]
     
-    # Fetch task titles (avoid N queries)
+    # Fetch task metadata (avoid N queries)
     task_ids = list({b.task_id for b in blocks})
     tasks = db.query(Task).filter(Task.id.in_(task_ids)).all() if task_ids else []
-    title_by_task = {t.id: t.title for t in tasks}
+    task_by_id = {t.id: t for t in tasks}
+
+    if not include_completed:
+        blocks = [
+            b
+            for b in blocks
+            if task_by_id.get(b.task_id) and task_by_id[b.task_id].status not in {"READY_TO_CLOSE", "CLOSED"}
+        ]
 
     now = datetime.now(timezone.utc)
 
@@ -75,9 +83,11 @@ def export_plan_ics(
         start_dt = as_utc(b.start_datetime)
         end_dt = as_utc(b.end_datetime)
 
-        task_title = title_by_task.get(b.task_id, f"Task {b.task_id}")
+        task = task_by_id.get(b.task_id)
+        task_title = task.title if task else f"Task {b.task_id}"
         summary = f"{task_title} ({b.planned_minutes} min)"
-        desc = f"Project {b.project_id}, Task {b.task_id}, User {b.user_id}, Block {b.id}, Status {b.block_status}"
+        task_status = task.status if task else "UNKNOWN"
+        desc = f"Project {b.project_id}, Task {b.task_id}, User {b.user_id}, Block {b.id}, Status {b.block_status}, Task status {task_status}"
 
         lines.append("BEGIN:VEVENT")
         lines.append(f"UID:block-{b.id}@licenta-planner")

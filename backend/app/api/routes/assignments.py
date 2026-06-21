@@ -14,7 +14,7 @@ from app.services.assignments_service import (
     delete_assignment,
 )
 from app.services.task_status_service import recompute_task_status
-from app.services.notification_service import notify_task_assigned
+from app.services.notification_service import notify_plan_impact, notify_task_assigned, notify_task_unassigned
 from app.services.activity_service import log_project_activity
 from app.models.scheduled_block import ScheduledBlock
 from app.models.user import User
@@ -83,6 +83,18 @@ def add_assignment(
         entity_id=task.id,
         details=f"Asignat catre {assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}.",
     )
+    notify_plan_impact(
+        db,
+        project_id=task.project_id,
+        title="Asignare modificata in plan",
+        body=(
+            f"Taskul {task.title} a fost asignat catre "
+            f"{assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}. "
+            "Planificarea va pastra asignarea manuala; ruleaza Replanificare daca vrei sa actualizezi calendarul."
+        ),
+        actor_id=current_user.id,
+        task_id=task.id,
+    )
 
     # Recompute task status after new assignment 
     task = get_task(db, task_id)
@@ -107,6 +119,9 @@ def update_assignment_status(
     if not is_member(db, task.project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a project member")
 
+    if task.status == "CLOSED":
+        raise HTTPException(status_code=400, detail="Taskul este inchis si statusul assignmentului nu mai poate fi modificat")
+
     row = get_assignment(db, task_id, user_id)
     if not row:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -124,10 +139,8 @@ def update_assignment_status(
     db.commit()
     db.refresh(row)
 
-    # Recompute task status after status change
     task = get_task(db, task_id)
     if task:
-        recompute_task_status(db, task)
         log_project_activity(
             db,
             task.project_id,
@@ -138,6 +151,7 @@ def update_assignment_status(
             entity_id=task.id,
             details=f"Status personal: {old_status} -> {row.member_status}.",
         )
+        recompute_task_status(db, task)
 
     return row
 
@@ -172,6 +186,7 @@ def remove_assignment(
     db.commit()
 
     delete_assignment(db, row)
+    notify_task_unassigned(db, task, user_id)
 
     # Recompute task status after removal
     task = get_task(db, task_id)
@@ -186,6 +201,17 @@ def remove_assignment(
             entity_type="TASK",
             entity_id=task.id,
             details=f"Eliminata asignarea pentru {assigned_user.name or assigned_user.email if assigned_user else f'User #{user_id}'}.",
+        )
+        notify_plan_impact(
+            db,
+            project_id=task.project_id,
+            title="Asignare eliminata din plan",
+            body=(
+                f"A fost eliminata asignarea pentru {assigned_user.name or assigned_user.email if assigned_user else f'User #{user_id}'} "
+                f"din taskul {task.title}. Ruleaza Replanificare daca taskul trebuie realocat."
+            ),
+            actor_id=current_user.id,
+            task_id=task.id,
         )
 
     return None

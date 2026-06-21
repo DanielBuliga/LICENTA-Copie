@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -23,8 +25,10 @@ from app.services.projects_service import get_member_role
 from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
 from app.models.project import Project
-from app.services.notification_service import notify_project_completed_if_needed
+from app.models.scheduled_block import ScheduledBlock
+from app.services.notification_service import notify_plan_impact, notify_project_completed_if_needed, notify_task_changed
 from app.services.activity_service import log_project_activity
+from app.services.task_status_service import recompute_task_status
 
 from app.utils.time_utils import utc_naive
 
@@ -116,6 +120,17 @@ def create_task_in_project(
         entity_id=task.id,
         details=f"Estimare: {task.estimate_minutes} min. Deadline: {task.deadline}.",
     )
+    notify_plan_impact(
+        db,
+        project_id=project_id,
+        title=f"Planul poate necesita actualizare: {project.title}",
+        body=(
+            f"A fost creat taskul {task.title}. "
+            "Verifica tabul Problems sau ruleaza Replanificare daca taskul trebuie inclus in plan."
+        ),
+        actor_id=current_user.id,
+        task_id=task.id,
+    )
     return task
 
 
@@ -128,6 +143,11 @@ def get_tasks_for_project(
     if not is_member(db, project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a project member")
 
+    tasks = list_tasks(db, project_id)
+    parent_ids = {task.parent_task_id for task in tasks if task.parent_task_id is not None}
+    for task in tasks:
+        if task.id not in parent_ids:
+            recompute_task_status(db, task)
     return list_tasks(db, project_id)
 
 
@@ -172,6 +192,10 @@ def update_task_by_id(
     old_deadline = task.deadline
     old_status = task.status
     old_parent_task_id = task.parent_task_id
+    old_parent_title = None
+    if old_parent_task_id is not None:
+        old_parent = get_task(db, old_parent_task_id)
+        old_parent_title = old_parent.title if old_parent else f"Task #{old_parent_task_id}"
     
     # Apply changes (only if provided)
     if payload.title is not None:
@@ -223,7 +247,11 @@ def update_task_by_id(
     if old_status != task.status:
         changes.append(f"status: {old_status} -> {task.status}")
     if old_parent_task_id != task.parent_task_id:
-        changes.append(f"parinte: {old_parent_task_id or 'fara'} -> {task.parent_task_id or 'fara'}")
+        new_parent_title = None
+        if task.parent_task_id is not None:
+            new_parent = get_task(db, task.parent_task_id)
+            new_parent_title = new_parent.title if new_parent else f"Task #{task.parent_task_id}"
+        changes.append(f"parinte: {old_parent_title or 'fara'} -> {new_parent_title or 'fara'}")
     if changes:
         event_type = "TASK_DEADLINE_CHANGED" if old_deadline != task.deadline and len(changes) == 1 else "TASK_UPDATED"
         log_project_activity(
@@ -236,6 +264,34 @@ def update_task_by_id(
             entity_id=task.id,
             details="; ".join(changes),
         )
+        plan_impact_changes = []
+        if old_priority != task.priority:
+            plan_impact_changes.append("prioritatea")
+        if old_estimate != task.estimate_minutes:
+            plan_impact_changes.append("estimarea")
+        if old_deadline != task.deadline:
+            plan_impact_changes.append("deadline-ul")
+        if old_parent_task_id != task.parent_task_id:
+            plan_impact_changes.append("taskul parinte")
+        if plan_impact_changes:
+            project = get_project_by_id(db, task.project_id)
+            notify_plan_impact(
+                db,
+                project_id=task.project_id,
+                title=f"Planul poate necesita replanificare: {project.title if project else 'proiect'}",
+                body=(
+                    f"Taskul {task.title} a fost modificat ({', '.join(plan_impact_changes)}). "
+                    "Verifica tabul Problems sau ruleaza Replanificare daca planul curent nu mai este valid."
+                ),
+                actor_id=current_user.id,
+                task_id=task.id,
+            )
+            assignee_changes = [
+                label
+                for label in plan_impact_changes
+                if label in {"estimarea", "deadline-ul", "prioritatea"}
+            ]
+            notify_task_changed(db, task, assignee_changes, actor_id=current_user.id)
     return task
 
 
@@ -269,6 +325,17 @@ def delete_task_by_id(
         entity_type="TASK",
         entity_id=task_id,
     )
+    project = get_project_by_id(db, project_id)
+    notify_plan_impact(
+        db,
+        project_id=project_id,
+        title=f"Planul poate necesita actualizare: {project.title if project else 'proiect'}",
+        body=(
+            f"Taskul {task_title} a fost sters. "
+            "Verifica tabul Plan si ruleaza Replanificare daca existau blocuri sau dependente afectate."
+        ),
+        actor_id=current_user.id,
+    )
     return None
 
 
@@ -295,6 +362,11 @@ def close_task(
 
     task.status = "CLOSED"
     db.add(task)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.query(ScheduledBlock).filter(
+        ScheduledBlock.task_id == task.id,
+        ScheduledBlock.start_datetime >= now,
+    ).delete()
     db.commit()
     db.refresh(task)
     recompute_parent_status_chain(db, task)

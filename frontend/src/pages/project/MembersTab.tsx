@@ -30,6 +30,7 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
 import { useAccentColor } from "../../hooks/useAccentColor";
+import { apiDate } from "../../utils/dateTime";
 
 type MemberItem = {
   user_id: number;
@@ -306,7 +307,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
                 {member.inactive_at ? (
                   <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 1.5 }}>
                     <Chip
-                      label={`Inactiv din ${new Date(member.inactive_at).toLocaleDateString("ro-RO")}`}
+                      label={`Inactiv din ${apiDate(member.inactive_at).format("DD.MM.YYYY")}`}
                       variant="outlined"
                       sx={{ fontWeight: 800 }}
                     />

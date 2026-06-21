@@ -11,6 +11,7 @@ import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
 import ViewColumnRoundedIcon from "@mui/icons-material/ViewColumnRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
 
@@ -18,6 +19,7 @@ import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
 import { useAccentColor } from "../hooks/useAccentColor";
+import { apiDate } from "../utils/dateTime";
 
 type MemberStatus = "TODO" | "IN_PROGRESS" | "DONE";
 type CurrentUser = { id: number; email: string; name?: string | null };
@@ -42,7 +44,7 @@ function priorityInfo(priority: number) {
 
 function matchesStatus(task: MyTask, filter: StatusFilter) {
   if (filter === "ALL") return true;
-  if (filter === "BLOCKED") return task.status === "OPEN" && dayjs(task.deadline).isBefore(dayjs()) && task.member_status !== "DONE";
+  if (filter === "BLOCKED") return task.status === "OPEN" && apiDate(task.deadline).isBefore(dayjs()) && task.member_status !== "DONE";
   return task.member_status === filter;
 }
 
@@ -146,8 +148,9 @@ export function ActivitiesPage() {
                   {column.items.map((task) => {
                     const priority = priorityInfo(task.priority);
                     const isDone = task.member_status === "DONE";
+                    const isOverdue = apiDate(task.deadline).isBefore(dayjs()) && !isDone && task.status !== "CLOSED";
                     return (
-                      <Card key={task.id} variant="outlined" onClick={() => nav(`/activities/${task.id}`)} sx={{ cursor: "pointer", borderRadius: 2, bgcolor: "background.default", flexShrink: 0, transition: "transform 140ms ease, border-color 140ms ease", "&:hover": { transform: "translateY(-1px)", borderColor: accent.value } }}>
+                      <Card key={task.id} variant="outlined" onClick={() => nav(`/activities/${task.id}`)} sx={{ cursor: "pointer", borderRadius: 2, bgcolor: "background.default", flexShrink: 0, borderColor: isOverdue ? "error.main" : undefined, transition: "transform 140ms ease, border-color 140ms ease", "&:hover": { transform: "translateY(-1px)", borderColor: isOverdue ? "error.main" : accent.value } }}>
                         <CardContent sx={{ p: 2 }}>
                           <Typography sx={{ fontWeight: 950, mb: 1 }}>{task.title}</Typography>
                           <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", gap: 0.75 }}>
@@ -159,9 +162,12 @@ export function ActivitiesPage() {
                             <Box sx={{ width: isDone ? "100%" : task.member_status === "IN_PROGRESS" ? "55%" : "12%", height: "100%", bgcolor: column.color }} />
                           </Box>
                           <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mt: 1.25 }}>
-                            <Typography sx={{ color: "text.secondary", fontSize: 13 }}>{dayjs(task.deadline).format("DD MMM")}</Typography>
+                            <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                              {isOverdue ? <WarningAmberRoundedIcon color="error" sx={{ fontSize: 16 }} /> : null}
+                              <Typography sx={{ color: isOverdue ? "error.main" : "text.secondary", fontSize: 13, fontWeight: isOverdue ? 900 : 400 }}>{apiDate(task.deadline).format("DD MMM")}</Typography>
+                            </Stack>
                             <FormControl size="small" onClick={(event) => event.stopPropagation()} sx={{ minWidth: 132 }}>
-                              <Select value={task.member_status} onChange={(event) => void updateStatus(task.id, event.target.value as MemberStatus)} disabled={updatingId === task.id} sx={{ height: 28, fontWeight: 800, fontSize: 12 }}>
+                              <Select value={task.member_status} onChange={(event) => void updateStatus(task.id, event.target.value as MemberStatus)} disabled={updatingId === task.id || task.status === "CLOSED"} sx={{ height: 28, fontWeight: 800, fontSize: 12 }}>
                                 <MenuItem value="TODO">TODO</MenuItem>
                                 <MenuItem value="IN_PROGRESS">IN PROGRESS</MenuItem>
                                 <MenuItem value="DONE">DONE</MenuItem>
@@ -182,8 +188,9 @@ export function ActivitiesPage() {
           {filtered.map((task) => {
             const priority = priorityInfo(task.priority);
             const isDone = task.member_status === "DONE";
+            const isOverdue = apiDate(task.deadline).isBefore(dayjs()) && !isDone && task.status !== "CLOSED";
             return (
-              <Card key={task.id} onClick={() => nav(`/activities/${task.id}`)} sx={{ cursor: "pointer", transition: "transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease", "&:hover": { transform: "translateY(-1px)", borderColor: accent.value, boxShadow: `0 16px 34px ${accent.value}20` } }}>
+              <Card key={task.id} onClick={() => nav(`/activities/${task.id}`)} sx={{ cursor: "pointer", borderColor: isOverdue ? "error.main" : undefined, transition: "transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease", "&:hover": { transform: "translateY(-1px)", borderColor: isOverdue ? "error.main" : accent.value, boxShadow: `0 16px 34px ${accent.value}20` } }}>
                 <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
                   <Stack direction="row" spacing={2} sx={{ alignItems: "flex-start" }}>
                     <Box sx={{ pt: 0.3, color: isDone ? "success.main" : task.member_status === "IN_PROGRESS" ? "warning.main" : "text.secondary" }}>{statusIcon(task.member_status)}</Box>
@@ -195,9 +202,9 @@ export function ActivitiesPage() {
                         <Chip size="small" icon={<FolderRoundedIcon />} label={task.project_title} sx={{ fontWeight: 800 }} />
                         {task.parent_task_title ? <Chip size="small" icon={<AccountTreeRoundedIcon />} label={task.parent_task_title} sx={{ fontWeight: 800 }} /> : null}
                         <Chip size="small" icon={<AccessTimeRoundedIcon />} label={formatMinutes(task.assigned_minutes ?? task.estimate_minutes)} sx={{ fontWeight: 800 }} />
-                        <Chip size="small" icon={<EventRoundedIcon />} label={dayjs(task.deadline).format("DD MMM YYYY")} color={dayjs(task.deadline).isBefore(dayjs()) && !isDone ? "error" : "default"} variant="outlined" sx={{ fontWeight: 800 }} />
+                        <Chip size="small" icon={isOverdue ? <WarningAmberRoundedIcon /> : <EventRoundedIcon />} label={apiDate(task.deadline).format("DD MMM YYYY")} color={isOverdue ? "error" : "default"} variant="outlined" sx={{ fontWeight: 800 }} />
                         <FormControl size="small" onClick={(event) => event.stopPropagation()} sx={{ minWidth: 150 }}>
-                          <Select value={task.member_status} onChange={(event) => void updateStatus(task.id, event.target.value as MemberStatus)} disabled={updatingId === task.id} sx={{ height: 28, fontWeight: 800, fontSize: 13 }}>
+                          <Select value={task.member_status} onChange={(event) => void updateStatus(task.id, event.target.value as MemberStatus)} disabled={updatingId === task.id || task.status === "CLOSED"} sx={{ height: 28, fontWeight: 800, fontSize: 13 }}>
                             <MenuItem value="TODO">TODO</MenuItem>
                             <MenuItem value="IN_PROGRESS">IN PROGRESS</MenuItem>
                             <MenuItem value="DONE">DONE</MenuItem>

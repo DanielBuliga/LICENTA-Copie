@@ -25,7 +25,14 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = response.config.method?.toUpperCase();
+    const url = response.config.url ?? "";
+    if (method && ["POST", "PATCH", "PUT", "DELETE"].includes(method) && !url.includes("/notifications")) {
+      window.dispatchEvent(new Event("smartplanner:notifications-refresh"));
+    }
+    return response;
+  },
   (error) => {
     if (error?.response?.status === 401) {
       clearToken();

@@ -20,13 +20,13 @@ import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
-import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import type { ProjectCreate, ProjectListItem, TaskPublic } from "../api/types";
 import { AppLayout } from "../components/AppLayout";
+import { apiDate } from "../utils/dateTime";
 
 type MemberItem = { user_id: number; role: string; status?: "ACTIVE" | "INACTIVE"; joined_at: string };
 type ProjectCardItem = ProjectListItem & {
@@ -140,9 +140,10 @@ export function ProjectsPage() {
             const closed = project.tasks.filter((task) => task.status === "CLOSED").length;
             const total = project.tasks.length;
             const progress = total ? Math.round((closed / total) * 100) : 0;
+            const isCompleted = total > 0 && closed === total;
             const nextDeadline = project.tasks
-              .filter((task) => dayjs(task.deadline).isValid())
-              .sort((a, b) => dayjs(b.deadline).valueOf() - dayjs(a.deadline).valueOf())[0]?.deadline;
+              .filter((task) => apiDate(task.deadline).isValid())
+              .sort((a, b) => apiDate(b.deadline).valueOf() - apiDate(a.deadline).valueOf())[0]?.deadline;
             const isOwner = project.role === "OWNER";
 
             return (
@@ -168,7 +169,10 @@ export function ProjectsPage() {
                       {project.description ?? "Proiect fara descriere."}
                     </Typography>
                   </Box>
-                  <Chip label={project.role} size="small" color={isOwner ? "primary" : "default"} />
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexShrink: 0 }}>
+                    {isCompleted ? <Chip label="Finalizat" size="small" color="success" sx={{ fontWeight: 900 }} /> : null}
+                    <Chip label={project.role} size="small" color={isOwner ? "primary" : "default"} />
+                  </Stack>
                 </Stack>
 
                 <Stack direction="row" sx={{ justifyContent: "space-between", mt: 2, mb: 0.75 }}>
@@ -188,7 +192,7 @@ export function ProjectsPage() {
                   </Stack>
                   <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
                     <EventRoundedIcon fontSize="small" />
-                    <Typography>{nextDeadline ? dayjs(nextDeadline).format("DD MMM YYYY") : "fara deadline"}</Typography>
+                    <Typography>{nextDeadline ? apiDate(nextDeadline).format("DD MMM YYYY") : "fara deadline"}</Typography>
                   </Stack>
                 </Stack>
 
