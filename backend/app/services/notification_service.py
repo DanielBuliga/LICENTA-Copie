@@ -402,21 +402,26 @@ def send_deadline_reminders(db: Session) -> int:
         prefs = get_or_create_preferences(db, assignment.user_id)
         if not prefs.deadline_reminders_enabled:
             continue
-        for hours in parse_hours(prefs.deadline_reminder_hours):
-            starts_at = task.deadline - timedelta(hours=hours)
-            ends_at = starts_at + timedelta(minutes=10)
-            if starts_at <= now < ends_at:
-                created = create_notification(
-                    db,
-                    user_id=assignment.user_id,
-                    notification_type="DEADLINE_REMINDER",
-                    title=f"Deadline in {hours}h: {task.title}",
-                    body=f"Taskul {task.title} din proiectul {project.title} are deadline la {task.deadline}.",
-                    project_id=task.project_id,
-                    task_id=task.id,
-                    event_key=f"task:{task.id}:deadline:{hours}h:{assignment.user_id}",
-                    email=True,
-                )
-                if created:
-                    count += 1
+        due_hours = [
+            hours
+            for hours in parse_hours(prefs.deadline_reminder_hours)
+            if task.deadline - timedelta(hours=hours) <= now < task.deadline
+        ]
+        if not due_hours:
+            continue
+
+        hours = min(due_hours)
+        created = create_notification(
+            db,
+            user_id=assignment.user_id,
+            notification_type="DEADLINE_REMINDER",
+            title=f"Deadline in {hours}h: {task.title}",
+            body=f"Taskul {task.title} din proiectul {project.title} are deadline la {task.deadline}.",
+            project_id=task.project_id,
+            task_id=task.id,
+            event_key=f"task:{task.id}:deadline:{task.deadline.isoformat()}:{hours}h:{assignment.user_id}",
+            email=True,
+        )
+        if created:
+            count += 1
     return count

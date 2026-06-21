@@ -24,10 +24,10 @@ function monthDays(month: Dayjs) { const start = month.startOf("month").startOf(
 function escapeIcs(text: string) { return text.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;"); }
 function formatMinutes(minutes: number) { const h = Math.floor(minutes / 60); const m = minutes % 60; if (!h) return `${m} min`; return m ? `${h}h ${m}m` : `${h}h`; }
 function statusDot(status: string) {
-  if (status === "CLOSED") return { color: "success" as const, label: "Închis" };
-  if (status === "READY_TO_CLOSE") return { color: "info" as const, label: "Gata de verificare" };
-  if (status === "IN_PROGRESS") return { color: "primary" as const, label: "În progres" };
-  return { color: "default" as const, label: "De făcut" };
+  if (status === "CLOSED") return { color: "#22C55E", label: "Închis" };
+  if (status === "READY_TO_CLOSE") return { color: "#0EA5E9", label: "Gata de verificare" };
+  if (status === "IN_PROGRESS") return { color: "#3B82F6", label: "În progres" };
+  return { color: "#94A3B8", label: "De făcut" };
 }
 function taskItemsForDay(blocks: CalendarBlock[], day: Dayjs): CalendarTaskItem[] {
   const grouped = new Map<string, CalendarTaskItem>();
@@ -143,17 +143,18 @@ export function CalendarPage() {
                         "&:hover": { borderColor: color, boxShadow: `0 10px 24px ${alpha(color, 0.16)}` },
                       }}
                     >
-                      <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1, mb: 0.5 }}>
-                        <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
-                          <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: color, flexShrink: 0 }} />
-                          <Typography noWrap sx={{ fontWeight: 950 }}>{item.taskTitle}</Typography>
-                        </Stack>
-                        <Chip size="small" color={status.color} label={status.label} sx={{ fontWeight: 900, flexShrink: 0 }} />
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 0.5 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: color }} />
+                        <Typography sx={{ fontWeight: 950 }}>{item.taskTitle}</Typography>
                       </Stack>
                       <Typography sx={{ color: "text.secondary" }}>{item.projectTitle}</Typography>
                       <Typography sx={{ mt: 1, color: "text.secondary", fontSize: 14 }}>
                         {formatMinutes(item.totalMinutes)} planificate · {item.blockCount} bloc{item.blockCount === 1 ? "" : "uri"} · {apiDate(item.start_datetime).format("HH:mm")} - {apiDate(item.end_datetime).format("HH:mm")}
                       </Typography>
+                      <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", mt: 1 }}>
+                        <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: status.color }} />
+                        <Typography sx={{ color: "text.secondary", fontSize: 13, fontWeight: 800 }}>{status.label}</Typography>
+                      </Stack>
                     </Box>
                   );
                 })}

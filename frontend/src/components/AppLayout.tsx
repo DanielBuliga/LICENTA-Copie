@@ -30,7 +30,7 @@ import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/api";
 import { clearToken, getToken } from "../api/auth";
-import { apiDate } from "../utils/dateTime";
+import { apiDate, formatApiDatesInText } from "../utils/dateTime";
 
 type Props = {
   title?: ReactNode;
@@ -474,7 +474,7 @@ export function AppLayout({ title, children }: Props) {
                     <Box sx={{ minWidth: 0 }}>
                       <Typography sx={{ fontWeight: 900, fontSize: 14 }}>{notification.title}</Typography>
                       <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.25 }}>
-                        {notification.body}
+                        {formatApiDatesInText(notification.body)}
                       </Typography>
                       <Typography sx={{ color: "text.disabled", fontSize: 12, mt: 0.75 }}>
                         {apiDate(notification.created_at).format("DD MMM YYYY, HH:mm")}
