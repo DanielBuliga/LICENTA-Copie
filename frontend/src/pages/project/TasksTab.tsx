@@ -166,6 +166,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
   // Dialog state
   const [openDialog, setOpenDialog] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskPublic | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Form state (in dialog)
   const [title, setTitle] = useState("");
@@ -254,6 +255,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
 
   function resetForm() {
     setEditingTask(null);
+    setFormError(null);
     setTitle("");
     setDescription("");
     setParentTaskId("");
@@ -266,6 +268,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
   function openEditDialog(task: TaskPublic) {
     setActionsAnchor(null);
     setActionsTask(null);
+    setFormError(null);
     setEditingTask(task);
     setTitle(task.title);
     setDescription(task.description ?? "");
@@ -359,6 +362,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
     if (!canSubmit || !deadline) return;
 
     setError(null);
+    setFormError(null);
     setSuccess(null);
     setLoading(true);
 
@@ -414,7 +418,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           : "Task salvat."
       );
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, editingTask ? "Nu am putut actualiza task-ul" : "Nu am putut crea task-ul"));
+      setFormError(getApiErrorMessage(err, editingTask ? "Nu am putut actualiza task-ul" : "Nu am putut crea task-ul"));
     } finally {
       setLoading(false);
     }
@@ -507,6 +511,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
               variant="contained"
               onClick={() => {
                 resetForm();
+                setFormError(null);
                 setOpenDialog(true);
               }}
               disabled={loading}
@@ -855,6 +860,13 @@ export function TasksTab({ projectId }: { projectId: number }) {
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} fullWidth maxWidth="sm">
         <DialogTitle>{editingTask ? "Editeaza task" : "Creeaza task"}</DialogTitle>
+        {formError ? (
+          <Box sx={{ px: 3, pb: 1 }}>
+            <Alert severity="error" onClose={() => setFormError(null)}>
+              {formError}
+            </Alert>
+          </Box>
+        ) : null}
 
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>

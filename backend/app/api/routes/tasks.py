@@ -12,6 +12,7 @@ from app.schemas.task import TaskCreate, TaskUpdate, TaskPublic, MyTaskPublic
 from app.services.tasks_service import (
     create_task,
     direct_subtasks_closed,
+    duplicate_task_title_exists,
     get_task,
     has_subtasks,
     list_tasks,
@@ -26,7 +27,12 @@ from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
 from app.models.project import Project
 from app.models.scheduled_block import ScheduledBlock
-from app.services.notification_service import notify_plan_impact, notify_project_completed_if_needed, notify_task_changed
+from app.services.notification_service import (
+    notify_plan_impact,
+    notify_project_completed_if_needed,
+    notify_task_changed,
+    notify_task_deleted,
+)
 from app.services.activity_service import log_project_activity
 from app.services.task_status_service import recompute_task_status
 
@@ -96,6 +102,9 @@ def create_task_in_project(
         parent = get_task(db, payload.parent_task_id)
         if not parent or parent.project_id != project_id:
             raise HTTPException(status_code=400, detail="Invalid parent_task_id")
+
+    if duplicate_task_title_exists(db, project_id, payload.title, payload.parent_task_id):
+        raise HTTPException(status_code=409, detail="Exista deja un task cu acest nume in acelasi nivel.")
 
     task = create_task(
         db=db,
@@ -229,6 +238,15 @@ def update_task_by_id(
 
             task.parent_task_id = payload.parent_task_id
 
+    if duplicate_task_title_exists(
+        db,
+        task.project_id,
+        task.title,
+        task.parent_task_id,
+        exclude_task_id=task.id,
+    ):
+        raise HTTPException(status_code=409, detail="Exista deja un task cu acest nume in acelasi nivel.")
+
     task = update_task(db, task)
     recompute_parent_status_chain(db, task)
     if old_parent_task_id is not None and old_parent_task_id != task.parent_task_id:
@@ -315,6 +333,10 @@ def delete_task_by_id(
 
     project_id = task.project_id
     task_title = task.title
+    assigned_user_ids = [
+        user_id
+        for (user_id,) in db.query(TaskAssignment.user_id).filter(TaskAssignment.task_id == task.id).all()
+    ]
     delete_task(db, task)
     log_project_activity(
         db,
@@ -334,6 +356,14 @@ def delete_task_by_id(
             f"Taskul {task_title} a fost sters. "
             "Verifica tabul Plan si ruleaza Replanificare daca existau blocuri sau dependente afectate."
         ),
+        actor_id=current_user.id,
+    )
+    notify_task_deleted(
+        db,
+        project_id=project_id,
+        task_id=task_id,
+        task_title=task_title,
+        user_ids=assigned_user_ids,
         actor_id=current_user.id,
     )
     return None

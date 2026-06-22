@@ -2,7 +2,37 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.models.notification import Notification
+from app.models.project_document import ProjectDocument
+from app.models.scheduled_block import ScheduledBlock
 from app.models.task import Task
+from app.models.task_assignment import TaskAssignment
+from app.models.task_dependency import TaskDependency
+from app.models.task_skill_requirement import TaskSkillRequirement
+
+
+def normalize_task_title(title: str) -> str:
+    return " ".join(title.strip().lower().split())
+
+
+def duplicate_task_title_exists(
+    db: Session,
+    project_id: int,
+    title: str,
+    parent_task_id: int | None,
+    exclude_task_id: int | None = None,
+) -> bool:
+    normalized_title = normalize_task_title(title)
+    with db.no_autoflush:
+        query = db.query(Task).filter(Task.project_id == project_id)
+        if parent_task_id is None:
+            query = query.filter(Task.parent_task_id.is_(None))
+        else:
+            query = query.filter(Task.parent_task_id == parent_task_id)
+        if exclude_task_id is not None:
+            query = query.filter(Task.id != exclude_task_id)
+
+        return any(normalize_task_title(task.title) == normalized_title for task in query.all())
 
 
 def create_task(
@@ -135,6 +165,20 @@ def update_task(db: Session, task: Task) -> Task:
 
 
 def delete_task(db: Session, task: Task) -> None:
+    db.query(ScheduledBlock).filter(ScheduledBlock.task_id == task.id).delete(synchronize_session=False)
+    db.query(TaskAssignment).filter(TaskAssignment.task_id == task.id).delete(synchronize_session=False)
+    db.query(TaskSkillRequirement).filter(TaskSkillRequirement.task_id == task.id).delete(synchronize_session=False)
+    db.query(TaskDependency).filter(
+        (TaskDependency.predecessor_task_id == task.id) | (TaskDependency.successor_task_id == task.id)
+    ).delete(synchronize_session=False)
+    db.query(Notification).filter(Notification.task_id == task.id).update(
+        {Notification.task_id: None},
+        synchronize_session=False,
+    )
+    db.query(ProjectDocument).filter(ProjectDocument.task_id == task.id).update(
+        {ProjectDocument.task_id: None},
+        synchronize_session=False,
+    )
     db.delete(task)
     db.commit()
 

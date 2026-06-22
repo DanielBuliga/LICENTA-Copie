@@ -46,7 +46,7 @@ def get_or_create_preferences(db: Session, user_id: int) -> NotificationPreferen
 def should_send_for_type(prefs: NotificationPreference, notification_type: str) -> bool:
     if notification_type in {"PROJECT_MEMBER_ADDED", "MEMBER_INACTIVE_REPLAN", "PLAN_PROBLEMS", "PLAN_IMPACT"}:
         return prefs.project_events_enabled
-    if notification_type in {"TASK_ASSIGNED", "TASK_CHANGED", "TASK_REPLANNED", "TASK_UNASSIGNED"}:
+    if notification_type in {"TASK_ASSIGNED", "TASK_CHANGED", "TASK_REPLANNED", "TASK_UNASSIGNED", "TASK_DELETED"}:
         return prefs.assignment_events_enabled
     if notification_type == "PROJECT_MESSAGE":
         return prefs.message_events_enabled
@@ -185,6 +185,30 @@ def notify_task_unassigned(db: Session, task: Task, user_id: int) -> None:
         project_id=task.project_id,
         task_id=task.id,
     )
+
+
+def notify_task_deleted(
+    db: Session,
+    project_id: int,
+    task_id: int,
+    task_title: str,
+    user_ids: list[int],
+    actor_id: int | None = None,
+) -> None:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    for user_id in sorted(set(user_ids)):
+        if actor_id is not None and user_id == actor_id:
+            continue
+        create_notification(
+            db,
+            user_id=user_id,
+            notification_type="TASK_DELETED",
+            title=f"Task sters: {task_title}",
+            body=f"Taskul {task_title} din proiectul {project.title if project else 'proiect'} a fost sters.",
+            project_id=project_id,
+            task_id=None,
+            event_key=f"task:{task_id}:deleted:{user_id}",
+        )
 
 
 def notify_task_replanned(
