@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
+  Badge,
   Box,
   Button,
   Card,
@@ -10,9 +11,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   LinearProgress,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
@@ -20,6 +23,7 @@ import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/api";
@@ -33,6 +37,12 @@ type ProjectCardItem = ProjectListItem & {
   tasks: TaskPublic[];
   members: MemberItem[];
 };
+type NotificationItem = {
+  id: number;
+  type: string;
+  project_id: number | null;
+  is_read: boolean;
+};
 
 export function ProjectsPage() {
   const nav = useNavigate();
@@ -41,8 +51,10 @@ export function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [unreadMessagesByProject, setUnreadMessagesByProject] = useState<Record<number, number>>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -50,16 +62,27 @@ export function ProjectsPage() {
 
     try {
       const res = await api.get<ProjectListItem[]>("/projects");
-      const details = await Promise.all(
-        res.data.map(async (project) => {
-          const [tasksRes, membersRes] = await Promise.all([
-            api.get<TaskPublic[]>(`/projects/${project.id}/tasks`),
-            api.get<MemberItem[]>(`/projects/${project.id}/members`),
-          ]);
-          return { ...project, tasks: tasksRes.data, members: membersRes.data };
-        })
-      );
+      const [details, notificationsRes] = await Promise.all([
+        Promise.all(
+          res.data.map(async (project) => {
+            const [tasksRes, membersRes] = await Promise.all([
+              api.get<TaskPublic[]>(`/projects/${project.id}/tasks`),
+              api.get<MemberItem[]>(`/projects/${project.id}/members`),
+            ]);
+            return { ...project, tasks: tasksRes.data, members: membersRes.data };
+          })
+        ),
+        api.get<NotificationItem[]>("/notifications", { params: { unread_only: true } }),
+      ]);
+      const unreadMessageCounts: Record<number, number> = {};
+      notificationsRes.data
+        .filter((notification) => notification.type === "PROJECT_MESSAGE" && notification.project_id !== null && !notification.is_read)
+        .forEach((notification) => {
+          const projectId = Number(notification.project_id);
+          unreadMessageCounts[projectId] = (unreadMessageCounts[projectId] ?? 0) + 1;
+        });
       setItems(details);
+      setUnreadMessagesByProject(unreadMessageCounts);
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca proiectele"));
     } finally {
@@ -86,15 +109,17 @@ export function ProjectsPage() {
 
     setLoading(true);
     setError(null);
+    setDialogError(null);
     try {
       const res = await api.post<ProjectListItem>("/projects", payload);
       setDialogOpen(false);
+      setDialogError(null);
       setTitle("");
       setDescription("");
       await load();
       openProject(res.data.id);
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut crea proiectul"));
+      setDialogError(getApiErrorMessage(err, "Nu am putut crea proiectul."));
     } finally {
       setLoading(false);
     }
@@ -126,7 +151,14 @@ export function ProjectsPage() {
               Organizeaza proiectele individuale si cele de echipa intr-un singur loc.
             </Typography>
           </Box>
-          <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={() => setDialogOpen(true)}>
+          <Button
+            variant="contained"
+            startIcon={<AddRoundedIcon />}
+            onClick={() => {
+              setDialogError(null);
+              setDialogOpen(true);
+            }}
+          >
             Proiect nou
           </Button>
         </Stack>
@@ -145,6 +177,7 @@ export function ProjectsPage() {
               .filter((task) => apiDate(task.deadline).isValid())
               .sort((a, b) => apiDate(b.deadline).valueOf() - apiDate(a.deadline).valueOf())[0]?.deadline;
             const isOwner = project.role === "OWNER";
+            const unreadMessages = unreadMessagesByProject[project.id] ?? 0;
 
             return (
             <Card
@@ -211,9 +244,26 @@ export function ProjectsPage() {
                   ) : (
                     <span />
                   )}
-                  <Button variant="contained" endIcon={<ArrowForwardRoundedIcon />}>
-                    Deschide
-                  </Button>
+                  <Stack direction="row" spacing={4} sx={{ alignItems: "center" }}>
+                    <Tooltip title={unreadMessages ? `${unreadMessages} mesaje necitite` : "Deschide chatul proiectului"}>
+                      <IconButton
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          nav(`/messages?projectId=${project.id}`);
+                        }}
+                        aria-label="Deschide chatul proiectului"
+                        sx={{ border: "1px solid", borderColor: "divider" }}
+                      >
+                        <Badge badgeContent={unreadMessages} color="error" max={99}>
+                          <ChatBubbleOutlineRoundedIcon fontSize="small" />
+                        </Badge>
+                      </IconButton>
+                    </Tooltip>
+                    <Button variant="contained" endIcon={<ArrowForwardRoundedIcon />}>
+                      Deschide
+                    </Button>
+                  </Stack>
                 </Stack>
               </CardContent>
             </Card>
@@ -228,7 +278,14 @@ export function ProjectsPage() {
               <Typography sx={{ color: "text.secondary", mt: 1, mb: 2 }}>
                 Creeaza primul proiect pentru a adauga task-uri, membri si planificare automata.
               </Typography>
-              <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={() => setDialogOpen(true)}>
+              <Button
+                variant="contained"
+                startIcon={<AddRoundedIcon />}
+                onClick={() => {
+                  setDialogError(null);
+                  setDialogOpen(true);
+                }}
+              >
                 Creeaza proiect
               </Button>
             </CardContent>
@@ -238,6 +295,13 @@ export function ProjectsPage() {
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Proiect nou</DialogTitle>
+        {dialogError ? (
+          <Box sx={{ px: 3, pb: 1 }}>
+            <Alert severity="error" onClose={() => setDialogError(null)}>
+              {dialogError}
+            </Alert>
+          </Box>
+        ) : null}
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
@@ -258,7 +322,14 @@ export function ProjectsPage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Anuleaza</Button>
+          <Button
+            onClick={() => {
+              setDialogOpen(false);
+              setDialogError(null);
+            }}
+          >
+            Anuleaza
+          </Button>
           <Button variant="contained" onClick={createProject} disabled={!title.trim() || loading}>
             Creeaza
           </Button>

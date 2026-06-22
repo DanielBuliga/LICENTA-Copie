@@ -991,11 +991,15 @@ export function TasksTab({ projectId }: { projectId: number }) {
               value={editingTaskNode?.hasChildren ? apiDate(editingTaskNode.aggregateDeadline) : deadline}
               onChange={(v) => setDeadline(v)}
               ampm={false}
+              minutesStep={1}
+              timeSteps={{ minutes: 1 }}
               format="DD.MM.YYYY HH:mm"
               slotProps={{
                 textField: {
                   fullWidth: true,
-                  helperText: editingTaskNode?.hasChildren ? "Taskurile părinte își iau deadline-ul din cel mai îndepărtat subtask." : undefined,
+                  helperText: editingTaskNode?.hasChildren
+                    ? "Taskurile părinte își iau deadline-ul din cel mai îndepărtat subtask."
+                    : "Poți alege ora din selector sau o poți introduce manual, de exemplu 30.06.2026 18:37.",
                 },
               }}
               disabled={Boolean(editingTaskNode?.hasChildren)}

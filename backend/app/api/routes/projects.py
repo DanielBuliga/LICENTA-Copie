@@ -81,7 +81,7 @@ def create_new_project(
 ):
     # Prevent duplicate project title for same owner
     if exists_project_with_title_for_owner(db, current_user.id, payload.title):
-        raise HTTPException(status_code=400, detail="You already have a project with this title")
+        raise HTTPException(status_code=409, detail="Există deja un proiect cu acest titlu.")
 
     project = create_project(db, payload.title, payload.description, current_user.id)
     add_member(db, project.id, current_user.id, role="OWNER")
@@ -410,7 +410,7 @@ def update_project(
     # Update title (with uniqueness check per owner)
     if payload.title is not None:
         if exists_project_with_title_for_owner_excluding(db, project.created_by, payload.title, project_id):
-            raise HTTPException(status_code=400, detail="You already have a project with this title")
+            raise HTTPException(status_code=409, detail="Există deja un proiect cu acest titlu.")
         project.title = payload.title
 
     # Update description (can be None)

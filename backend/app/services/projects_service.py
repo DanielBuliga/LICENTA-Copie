@@ -91,12 +91,9 @@ def deactivate_member(db: Session, member: ProjectMember, reason: str | None = N
 
 
 def exists_project_with_title_for_owner(db: Session, created_by: int, title: str) -> bool:
-    return (
-        db.query(Project)
-        .filter(Project.created_by == created_by, Project.title == title)
-        .first()
-        is not None
-    )
+    normalized_title = " ".join(title.strip().lower().split())
+    projects = db.query(Project).filter(Project.created_by == created_by).all()
+    return any(" ".join(project.title.strip().lower().split()) == normalized_title for project in projects)
 
 
 def exists_project_with_title_for_owner_excluding(
@@ -105,13 +102,10 @@ def exists_project_with_title_for_owner_excluding(
     title: str,
     exclude_project_id: int,
 ) -> bool:
-    return (
+    normalized_title = " ".join(title.strip().lower().split())
+    projects = (
         db.query(Project)
-        .filter(
-            Project.created_by == created_by,
-            Project.title == title,
-            Project.id != exclude_project_id,
-        )
-        .first()
-        is not None
+        .filter(Project.created_by == created_by, Project.id != exclude_project_id)
+        .all()
     )
+    return any(" ".join(project.title.strip().lower().split()) == normalized_title for project in projects)

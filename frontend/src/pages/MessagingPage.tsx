@@ -4,6 +4,7 @@ import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineR
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import dayjs from "dayjs";
+import { useSearchParams } from "react-router-dom";
 
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
@@ -14,6 +15,12 @@ import { ChatMessageList, type ChatMessageItem } from "./project/ChatMessageList
 
 type MessageItem = ChatMessageItem;
 type CurrentUser = { id: number };
+type NotificationItem = {
+  id: number;
+  type: string;
+  project_id: number | null;
+  is_read: boolean;
+};
 
 function mergeMessages(current: MessageItem[], incoming: MessageItem[]) {
   const seen = new Set(current.map((message) => message.id));
@@ -27,6 +34,7 @@ function asLocalTime(value: string) {
 
 export function MessagingPage() {
   const accent = useAccentColor();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -42,13 +50,15 @@ export function MessagingPage() {
     try {
       const res = await api.get<ProjectListItem[]>("/projects");
       setProjects(res.data);
-      setSelectedProjectId((current) => current ?? res.data[0]?.id ?? null);
+      const requestedProjectId = Number(searchParams.get("projectId"));
+      const projectFromUrl = res.data.find((project) => project.id === requestedProjectId)?.id ?? null;
+      setSelectedProjectId((current) => projectFromUrl ?? current ?? res.data[0]?.id ?? null);
       const meRes = await api.get<CurrentUser>("/users/me");
       setCurrentUserId(meRes.data.id);
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca proiectele pentru mesagerie"));
     } finally { setLoading(false); }
-  }, []);
+  }, [searchParams]);
 
   const loadMessages = useCallback(async (projectId: number, append = false) => {
     try {
@@ -62,6 +72,31 @@ export function MessagingPage() {
   useEffect(() => { void loadProjects(); }, [loadProjects]);
   useEffect(() => { if (!selectedProjectId) { setMessages([]); return; } void loadMessages(selectedProjectId, false); }, [loadMessages, selectedProjectId]);
   useEffect(() => { if (!selectedProjectId) return; const id = window.setInterval(() => void loadMessages(selectedProjectId, true), 3000); return () => window.clearInterval(id); }, [loadMessages, selectedProjectId]);
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    if (searchParams.get("projectId") !== String(selectedProjectId)) {
+      setSearchParams({ projectId: String(selectedProjectId) }, { replace: true });
+    }
+  }, [searchParams, selectedProjectId, setSearchParams]);
+  useEffect(() => {
+    async function markProjectMessagesRead(projectId: number) {
+      try {
+        const res = await api.get<NotificationItem[]>("/notifications", { params: { unread_only: true } });
+        const messageNotifications = res.data.filter(
+          (notification) =>
+            notification.type === "PROJECT_MESSAGE" &&
+            notification.project_id === projectId &&
+            !notification.is_read
+        );
+        if (!messageNotifications.length) return;
+        await Promise.all(messageNotifications.map((notification) => api.patch(`/notifications/${notification.id}/read`)));
+        window.dispatchEvent(new Event("smartplanner:notifications-refresh"));
+      } catch {
+        // Mesageria trebuie să rămână utilizabilă chiar dacă notificările nu pot fi actualizate.
+      }
+    }
+    if (selectedProjectId) void markProjectMessagesRead(selectedProjectId);
+  }, [selectedProjectId]);
 
   async function send() {
     if (!selectedProjectId || !content.trim()) return;
