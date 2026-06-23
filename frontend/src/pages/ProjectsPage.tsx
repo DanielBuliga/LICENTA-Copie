@@ -30,6 +30,7 @@ import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import type { ProjectCreate, ProjectListItem, TaskPublic } from "../api/types";
 import { AppLayout } from "../components/AppLayout";
+import { useConfirmDialog } from "../components/useConfirmDialog";
 import { apiDate } from "../utils/dateTime";
 
 type MemberItem = { user_id: number; role: string; status?: "ACTIVE" | "INACTIVE"; joined_at: string };
@@ -46,6 +47,7 @@ type NotificationItem = {
 
 export function ProjectsPage() {
   const nav = useNavigate();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const [items, setItems] = useState<ProjectCardItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -126,14 +128,19 @@ export function ProjectsPage() {
   }
 
   async function deleteProject(projectId: number) {
-    if (!window.confirm("Sigur vrei să ștergi acest proiect? Vor fi șterse și taskurile, planificările, documentele și mesajele asociate.")) return;
+    const confirmed = await confirm({
+      title: "Ștergere proiect",
+      description: "Sigur vrei să ștergi acest proiect? Vor fi șterse și taskurile, planificările, documentele și mesajele asociate.",
+      confirmLabel: "Șterge proiectul",
+    });
+    if (!confirmed) return;
     setLoading(true);
     setError(null);
     try {
       await api.delete(`/projects/${projectId}`);
       await load();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut sterge proiectul"));
+      setError(getApiErrorMessage(err, "Nu am putut șterge proiectul"));
     } finally {
       setLoading(false);
     }
@@ -335,6 +342,7 @@ export function ProjectsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      {confirmDialog}
     </AppLayout>
   );
 }

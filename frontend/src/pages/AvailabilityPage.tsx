@@ -22,6 +22,7 @@ import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
+import { useConfirmDialog } from "../components/useConfirmDialog";
 import { useThemeMode } from "../themeMode";
 
 type AvailabilityWindow = {
@@ -39,12 +40,12 @@ type AvailabilityOverride = {
 
 const weekdays = [
   { value: 0, label: "Luni" },
-  { value: 1, label: "Marti" },
+  { value: 1, label: "Marți" },
   { value: 2, label: "Miercuri" },
   { value: 3, label: "Joi" },
   { value: 4, label: "Vineri" },
-  { value: 5, label: "Sambata" },
-  { value: 6, label: "Duminica" },
+  { value: 5, label: "Sâmbătă" },
+  { value: 6, label: "Duminică" },
 ];
 
 const standardWorkWeek: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((weekday) => ({
@@ -63,6 +64,7 @@ function isValidTime(value: string | null | undefined) {
 
 export function AvailabilityPage() {
   const { mode } = useThemeMode();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const isDark = mode === "dark";
   const [windows, setWindows] = useState<AvailabilityWindow[]>([]);
   const [overrides, setOverrides] = useState<AvailabilityOverride[]>([]);
@@ -127,8 +129,13 @@ export function AvailabilityPage() {
     setWindows((current) => [...current, { weekday: day, start_time: "09:00", end_time: "17:00" }]);
   }
 
-  function removeWindow(index: number) {
-    if (!window.confirm("Sigur vrei să ștergi acest interval de disponibilitate?")) return;
+  async function removeWindow(index: number) {
+    const confirmed = await confirm({
+      title: "Ștergere interval",
+      description: "Sigur vrei să ștergi acest interval de disponibilitate?",
+      confirmLabel: "Șterge intervalul",
+    });
+    if (!confirmed) return;
     setWindows((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
@@ -195,7 +202,7 @@ export function AvailabilityPage() {
 
     try {
       await api.put("/users/me/availability-windows", payload);
-      setSuccess("Disponibilitatea a fost salvata.");
+      setSuccess("Disponibilitatea a fost salvată.");
       await load();
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut salva disponibilitatea"));
@@ -220,8 +227,13 @@ export function AvailabilityPage() {
     setOverrides((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
   }
 
-  function removeOverride(index: number) {
-    if (!window.confirm("Sigur vrei să ștergi această excepție de disponibilitate?")) return;
+  async function removeOverride(index: number) {
+    const confirmed = await confirm({
+      title: "Ștergere excepție",
+      description: "Sigur vrei să ștergi această excepție de disponibilitate?",
+      confirmLabel: "Șterge excepția",
+    });
+    if (!confirmed) return;
     setOverrides((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
@@ -233,7 +245,7 @@ export function AvailabilityPage() {
     const invalidOverride = overrides.find((override) => !isOverrideInsideAvailability(override));
     if (invalidOverride) {
       setSaving(false);
-      setError(`Exceptia din ${invalidOverride.day} trebuie sa fie in interiorul unui interval de disponibilitate setat pentru ziua respectiva.`);
+      setError(`Exceptia din ${invalidOverride.day} trebuie sa fie in interiorul unui interval de disponibilitate setat pentru ziua respectivă.`);
       return;
     }
 
@@ -251,14 +263,14 @@ export function AvailabilityPage() {
       setSuccess("Exceptiile au fost salvate.");
       await load();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut salva exceptiile"));
+      setError(getApiErrorMessage(err, "Nu am putut salva excepțiile"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <AppLayout title="Disponibilitate" eyebrow="Planificare personala">
+    <AppLayout title="Disponibilitate" eyebrow="Planificare personală">
       <Stack spacing={2.5}>
         {loading ? <LinearProgress /> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
@@ -269,7 +281,7 @@ export function AvailabilityPage() {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 3 }}>
                 <AccessTimeRoundedIcon sx={{ color: "primary.main" }} />
-                <Typography variant="h6">Program saptamanal</Typography>
+                <Typography variant="h6">Program săptămânal</Typography>
               </Stack>
 
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
@@ -303,7 +315,7 @@ export function AvailabilityPage() {
                           label={<Typography sx={{ fontWeight: 800 }}>{day.label}</Typography>}
                         />
                         <Button size="small" variant="outlined" startIcon={<AddRoundedIcon />} onClick={() => addWindow(day.value)} disabled={!enabled}>
-                          Adauga interval
+                          Adaugă interval
                         </Button>
                       </Stack>
                       <Stack spacing={1}>
@@ -341,7 +353,7 @@ export function AvailabilityPage() {
                           );
                         })}
                         {enabled && dayWindows.length === 0 ? (
-                          <Typography sx={{ color: "text.secondary", fontSize: 14 }}>Adauga cel putin un interval pentru aceasta zi.</Typography>
+                          <Typography sx={{ color: "text.secondary", fontSize: 14 }}>Adaugă cel puțin un interval pentru această zi.</Typography>
                         ) : null}
                       </Stack>
                     </Box>
@@ -351,7 +363,7 @@ export function AvailabilityPage() {
 
               <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
                 <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={save} disabled={saving}>
-                  {saving ? "Se salveaza..." : "Salveaza"}
+                  {saving ? "Se salvează..." : "Salvează"}
                 </Button>
               </Stack>
             </CardContent>
@@ -361,7 +373,7 @@ export function AvailabilityPage() {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 3 }}>
                 <EventBusyRoundedIcon sx={{ color: "error.main" }} />
-                <Typography variant="h6">Exceptii (Override)</Typography>
+                <Typography variant="h6">Excepții (Override)</Typography>
               </Stack>
 
               <Stack spacing={1.5}>
@@ -447,16 +459,17 @@ export function AvailabilityPage() {
 
               <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
                 <Button variant="outlined" startIcon={<AddRoundedIcon />} onClick={addOverride}>
-                  Adauga exceptie
+                  Adaugă excepție
                 </Button>
                 <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={saveOverrides} disabled={saving}>
-                  Salveaza
+                  Salvează
                 </Button>
               </Stack>
             </CardContent>
           </Card>
         </Box>
       </Stack>
+      {confirmDialog}
     </AppLayout>
   );
 }

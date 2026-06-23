@@ -8,6 +8,7 @@ import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import dayjs from "dayjs";
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
+import { useConfirmDialog } from "../../components/useConfirmDialog";
 import { apiDate } from "../../utils/dateTime";
 
 type ScheduledBlock = {
@@ -47,6 +48,7 @@ type GenerateResponse = {
 };
 
 export function PlanTab({ projectId }: { projectId: number }) {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [startDay, setStartDay] = useState(dayjs().format("YYYY-MM-DD"));
   const [calendarWeekStart, setCalendarWeekStart] = useState(dayjs().startOf("week").add(1, "day"));
   const [horizonDays, setHorizonDays] = useState(7);
@@ -136,9 +138,12 @@ export function PlanTab({ projectId }: { projectId: number }) {
 
   async function runPlanner(mode: "generate" | "replan") {
     if (mode === "replan") {
-      const confirmed = window.confirm(
-        "Replanificarea va înlocui blocurile calendaristice din intervalul ales. Assignmenturile existente vor fi păstrate."
-      );
+      const confirmed = await confirm({
+        title: "Replanificare",
+        description: "Replanificarea va înlocui blocurile calendaristice din intervalul ales. Assignmenturile existente vor fi păstrate.",
+        confirmLabel: "Replanifică",
+        tone: "warning",
+      });
       if (!confirmed) return;
     }
 
@@ -358,6 +363,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
       </Stack>
 
       {blocks.length === 0 && !loading ? <Typography sx={{ color: "text.secondary" }}>Nu există blocuri planificate.</Typography> : null}
+      {confirmDialog}
     </Stack>
   );
 }

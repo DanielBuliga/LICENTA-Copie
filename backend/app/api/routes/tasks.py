@@ -104,7 +104,7 @@ def create_task_in_project(
             raise HTTPException(status_code=400, detail="Invalid parent_task_id")
 
     if duplicate_task_title_exists(db, project_id, payload.title, payload.parent_task_id):
-        raise HTTPException(status_code=409, detail="Exista deja un task cu acest nume in acelasi nivel.")
+        raise HTTPException(status_code=409, detail="Există deja un task cu acest nume în același nivel.")
 
     task = create_task(
         db=db,
@@ -245,7 +245,7 @@ def update_task_by_id(
         task.parent_task_id,
         exclude_task_id=task.id,
     ):
-        raise HTTPException(status_code=409, detail="Exista deja un task cu acest nume in acelasi nivel.")
+        raise HTTPException(status_code=409, detail="Există deja un task cu acest nume în același nivel.")
 
     task = update_task(db, task)
     recompute_parent_status_chain(db, task)
@@ -329,7 +329,7 @@ def delete_task_by_id(
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
     if has_subtasks(db, task.id):
-        raise HTTPException(status_code=400, detail="Sterge sau muta subtaskurile inainte de a sterge taskul parinte")
+        raise HTTPException(status_code=400, detail="Șterge sau mută subtaskurile înainte de a șterge taskul părinte.")
 
     project_id = task.project_id
     task_title = task.title

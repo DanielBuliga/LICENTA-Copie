@@ -13,6 +13,7 @@ import { api } from "../api/api";
 import { clearToken } from "../api/auth";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
+import { useConfirmDialog } from "../components/useConfirmDialog";
 import { useAccentColor } from "../hooks/useAccentColor";
 import { useThemeMode } from "../themeMode";
 
@@ -37,6 +38,7 @@ type NotificationPreferences = {
 export function AccountPage() {
   const nav = useNavigate();
   const accent = useAccentColor();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const { designVariant, setDesignVariant } = useThemeMode();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
@@ -77,9 +79,17 @@ export function AccountPage() {
   }
 
   async function deleteAccount() {
-    const firstConfirm = window.confirm("Sigur vrei să ștergi contul? Contul va fi dezactivat, nu te vei mai putea autentifica, iar istoricul din proiecte va fi păstrat.");
+    const firstConfirm = await confirm({
+      title: "Dezactivare cont",
+      description: "Sigur vrei să dezactivezi contul? Nu te vei mai putea autentifica, iar istoricul din proiecte va fi păstrat.",
+      confirmLabel: "Continuă",
+    });
     if (!firstConfirm) return;
-    const secondConfirm = window.confirm("Confirmare finală: dezactivezi contul curent?");
+    const secondConfirm = await confirm({
+      title: "Confirmare finală",
+      description: "Confirmi dezactivarea contului curent?",
+      confirmLabel: "Dezactivează contul",
+    });
     if (!secondConfirm) return;
 
     setLoading(true);
@@ -89,7 +99,7 @@ export function AccountPage() {
       clearToken();
       nav("/login", { replace: true });
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut șterge contul"));
+      setError(getApiErrorMessage(err, "Nu am putut dezactiva contul"));
     } finally {
       setLoading(false);
     }
@@ -255,6 +265,7 @@ export function AccountPage() {
           </CardContent>
         </Card>
       </Stack>
+      {confirmDialog}
     </AppLayout>
   );
 }

@@ -43,6 +43,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
+import { useConfirmDialog } from "../../components/useConfirmDialog";
 import { useAccentColor } from "../../hooks/useAccentColor";
 import { apiDate } from "../../utils/dateTime";
 
@@ -147,6 +148,7 @@ type TaskNode = TaskPublic & {
 export function TasksTab({ projectId }: { projectId: number }) {
   const accent = useAccentColor();
   const nav = useNavigate();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [items, setItems] = useState<TaskPublic[]>([]);
   const [assignmentsByTask, setAssignmentsByTask] = useState<Record<number, AssignmentItem[]>>({});
   const [membersById, setMembersById] = useState<Record<number, MemberItem>>({});
@@ -425,7 +427,12 @@ export function TasksTab({ projectId }: { projectId: number }) {
   }
 
   async function deleteTask(taskId: number) {
-    if (!window.confirm("Sigur vrei să ștergi acest task? Vor fi șterse și asignările, dependențele și planificările asociate.")) return;
+    const confirmed = await confirm({
+      title: "Ștergere task",
+      description: "Sigur vrei să ștergi acest task? Vor fi șterse și asignările, dependențele și planificările asociate.",
+      confirmLabel: "Șterge taskul",
+    });
+    if (!confirmed) return;
     setError(null);
     setLoading(true);
     try {
@@ -436,7 +443,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       );
       setSuccess("Task șters. Dacă exista deja un plan generat, verifică tabul Plan sau rulează Replanificare.");
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut sterge task-ul"));
+      setError(getApiErrorMessage(err, "Nu am putut șterge taskul"));
     } finally {
       setLoading(false);
     }
@@ -481,7 +488,13 @@ export function TasksTab({ projectId }: { projectId: number }) {
   }
 
   async function closeTask(taskId: number) {
-    if (!window.confirm("Confirmi închiderea acestui task? După închidere, taskul este considerat finalizat.")) return;
+    const confirmed = await confirm({
+      title: "Închidere task",
+      description: "Confirmi închiderea acestui task? După închidere, taskul este considerat finalizat.",
+      confirmLabel: "Închide taskul",
+      tone: "warning",
+    });
+    if (!confirmed) return;
     setError(null);
     setLoading(true);
     try {
@@ -516,7 +529,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
               }}
               disabled={loading}
             >
-              Creeaza task
+              Creează task
             </Button>
           )}
           <Button variant="outlined" onClick={loadTasks} disabled={loading}>
@@ -828,7 +841,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           }}
         >
           <ListItemIcon><EditRoundedIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Editeaza</ListItemText>
+          <ListItemText>Editează</ListItemText>
         </MenuItem>
         <MenuItem
           sx={{ color: "error.main" }}
@@ -840,7 +853,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           }}
         >
           <ListItemIcon sx={{ color: "inherit" }}><DeleteOutlineRoundedIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Sterge</ListItemText>
+          <ListItemText>Șterge</ListItemText>
         </MenuItem>
       </Menu>
 
@@ -859,7 +872,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       </Dialog>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{editingTask ? "Editeaza task" : "Creeaza task"}</DialogTitle>
+        <DialogTitle>{editingTask ? "Editeaza task" : "Creează task"}</DialogTitle>
         {formError ? (
           <Box sx={{ px: 3, pb: 1 }}>
             <Alert severity="error" onClose={() => setFormError(null)}>
@@ -1014,13 +1027,14 @@ export function TasksTab({ projectId }: { projectId: number }) {
               resetForm();
             }}
           >
-            Anuleaza
+            Anulează
           </Button>
           <Button variant="contained" onClick={saveTask} disabled={!canSubmit || loading}>
-            Salveaza
+            Salvează
           </Button>
         </DialogActions>
       </Dialog>
+      {confirmDialog}
     </Box>
   );
 }

@@ -8,6 +8,7 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
+import { useConfirmDialog } from "../../components/useConfirmDialog";
 import { openProjectDocument } from "./documentUtils";
 
 export type ProjectDocument = {
@@ -49,7 +50,7 @@ export function ProjectDocumentsList({ documents, onOpen, onDelete }: { document
                 ) : null}
                 {onDelete ? (
                   <Button color="error" startIcon={<DeleteOutlineRoundedIcon />} onClick={() => onDelete(doc.id)}>
-                    Sterge
+                    Șterge
                   </Button>
                 ) : null}
               </Stack>
@@ -65,6 +66,7 @@ export function ProjectDocumentsList({ documents, onOpen, onDelete }: { document
 }
 
 export function DocumentsTab({ projectId, projectOnly = false }: { projectId: number; projectOnly?: boolean }) {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [taskId, setTaskId] = useState("project");
@@ -128,14 +130,19 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
   }
 
   async function deleteDocument(id: number) {
-    if (!window.confirm("Sigur vrei să ștergi acest document?")) return;
+    const confirmed = await confirm({
+      title: "Ștergere document",
+      description: "Sigur vrei să ștergi acest document?",
+      confirmLabel: "Șterge documentul",
+    });
+    if (!confirmed) return;
     setLoading(true);
     setError(null);
     try {
       await api.delete(`/documents/${id}`);
       await load();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut sterge documentul"));
+      setError(getApiErrorMessage(err, "Nu am putut șterge documentul"));
     } finally {
       setLoading(false);
     }
@@ -155,7 +162,7 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
         <CardContent sx={{ p: 3 }}>
           <Stack spacing={2} sx={{ alignItems: "center", textAlign: "center" }}>
             <UploadFileRoundedIcon sx={{ fontSize: 46, color: "text.secondary", opacity: 0.55 }} />
-            <Typography sx={{ color: "text.secondary" }}>Incarca fisiere reale pentru proiect sau task-uri.</Typography>
+            <Typography sx={{ color: "text.secondary" }}>Încarcă fișiere pentru proiect sau task-uri.</Typography>
             {loading ? <LinearProgress sx={{ width: "100%" }} /> : null}
 
             <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ width: "100%" }}>
@@ -170,15 +177,15 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
                 </TextField>
               ) : null}
               <Button component="label" variant="outlined" startIcon={<UploadFileRoundedIcon />} sx={{ minWidth: 210 }}>
-                Alege fisier
+                Alege fișier
                 <input hidden type="file" onChange={onFileChange} />
               </Button>
-              <TextField label="Fisier selectat" value={selectedFile?.name ?? ""} fullWidth disabled placeholder="Niciun fisier selectat" />
+              <TextField label="Fișier selectat" value={selectedFile?.name ?? ""} fullWidth disabled placeholder="Niciun fișier selectat" />
               <TextField label="Descriere" value={description} onChange={(event) => setDescription(event.target.value)} fullWidth />
             </Stack>
 
             <Button variant="contained" startIcon={<UploadFileRoundedIcon />} onClick={addDocument} disabled={!selectedFile || loading}>
-              Incarca fisier
+              Încarcă fișier
             </Button>
           </Stack>
         </CardContent>
@@ -200,6 +207,7 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
       ) : null}
 
       <ProjectDocumentsList documents={visibleDocuments} onOpen={(doc) => void openDocument(doc)} onDelete={(id) => void deleteDocument(id)} />
+      {confirmDialog}
     </Stack>
   );
 }

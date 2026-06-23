@@ -27,6 +27,7 @@ import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
+import { useConfirmDialog } from "../components/useConfirmDialog";
 import { useAccentColor } from "../hooks/useAccentColor";
 import type { ProjectListItem } from "../api/types";
 
@@ -53,6 +54,7 @@ type MemberSkill = UserSkill & {
 
 export function SkillsPage() {
   const accent = useAccentColor();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [aliasesBySkill, setAliasesBySkill] = useState<Record<number, SkillAlias[]>>({});
   const [mySkills, setMySkills] = useState<UserSkill[]>([]);
@@ -161,7 +163,12 @@ export function SkillsPage() {
   }
 
   async function deleteMySkill(skillId: number) {
-    if (!window.confirm("Sigur vrei să ștergi această competență din profilul tău?")) return;
+    const confirmed = await confirm({
+      title: "Ștergere competență",
+      description: "Sigur vrei să ștergi această competență din profilul tău?",
+      confirmLabel: "Șterge competența",
+    });
+    if (!confirmed) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -177,7 +184,12 @@ export function SkillsPage() {
   }
 
   async function deleteCatalogSkill(skillId: number) {
-    if (!window.confirm("Sigur vrei să ștergi această competență din catalog?")) return;
+    const confirmed = await confirm({
+      title: "Ștergere din catalog",
+      description: "Sigur vrei să ștergi această competență din catalog?",
+      confirmLabel: "Șterge competența",
+    });
+    if (!confirmed) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -212,7 +224,12 @@ export function SkillsPage() {
   }
 
   async function deleteAlias(skillId: number, aliasId: number) {
-    if (!window.confirm("Sigur vrei să ștergi acest alias?")) return;
+    const confirmed = await confirm({
+      title: "Ștergere alias",
+      description: "Sigur vrei să ștergi acest alias?",
+      confirmLabel: "Șterge aliasul",
+    });
+    if (!confirmed) return;
 
     setSaving(true);
     setError(null);
@@ -453,6 +470,7 @@ export function SkillsPage() {
           </CardContent>
         </Card>
       </Stack>
+      {confirmDialog}
     </AppLayout>
   );
 }

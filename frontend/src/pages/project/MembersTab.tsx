@@ -29,6 +29,7 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
+import { useConfirmDialog } from "../../components/useConfirmDialog";
 import { useAccentColor } from "../../hooks/useAccentColor";
 import { apiDate } from "../../utils/dateTime";
 
@@ -72,6 +73,7 @@ function roleMeta(role: MemberItem["role"]) {
 
 export function MembersTab({ projectId }: { projectId: number }) {
   const accent = useAccentColor();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [memberStats, setMemberStats] = useState<Record<number, { assigned: number; done: number }>>({});
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
@@ -144,14 +146,19 @@ export function MembersTab({ projectId }: { projectId: number }) {
       setDialogOpen(false);
       await load();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut adauga membrul"));
+      setError(getApiErrorMessage(err, "Nu am putut adăuga membrul"));
     } finally {
       setLoading(false);
     }
   }
 
   async function removeMember(userId: number) {
-    if (!window.confirm("Sigur vrei să elimini definitiv acest membru din proiect? Operația este destinată membrilor adăugați din greșeală. Dacă are istoric, sistemul îl va păstra ca inactiv.")) return;
+    const confirmed = await confirm({
+      title: "Eliminare membru",
+      description: "Sigur vrei să elimini acest membru din proiect? Dacă are istoric, sistemul îl va păstra ca inactiv.",
+      confirmLabel: "Elimină membrul",
+    });
+    if (!confirmed) return;
     setLoading(true);
     setMessage(null);
     setError(null);
@@ -160,7 +167,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
       setMessage(res.data.message);
       await load();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut sterge membrul"));
+      setError(getApiErrorMessage(err, "Nu am putut șterge membrul"));
     } finally {
       setLoading(false);
     }
@@ -182,7 +189,15 @@ export function MembersTab({ projectId }: { projectId: number }) {
   }
 
   async function changeStatus(userId: number, nextStatus: MemberItem["status"]) {
-    if (nextStatus === "INACTIVE" && !window.confirm("Marchezi acest membru ca inactiv? Nu va mai intra în planificare, iar taskurile active asignate lui vor apărea în Problems.")) return;
+    if (nextStatus === "INACTIVE") {
+      const confirmed = await confirm({
+        title: "Inactivare membru",
+        description: "Marchezi acest membru ca inactiv? Nu va mai intra în planificare, iar taskurile active asignate lui vor apărea în Problems.",
+        confirmLabel: "Marchează inactiv",
+        tone: "warning",
+      });
+      if (!confirmed) return;
+    }
     setLoading(true);
     setMessage(null);
     setError(null);
@@ -212,7 +227,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
         </Typography>
         {isOwner ? (
           <Button variant="contained" startIcon={<PersonAddRoundedIcon />} onClick={() => setDialogOpen(true)}>
-            Adauga membru
+            Adaugă membru
           </Button>
         ) : null}
       </Stack>
@@ -377,6 +392,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
           </Button>
         </DialogActions>
       </Dialog>
+      {confirmDialog}
     </Stack>
   );
 }

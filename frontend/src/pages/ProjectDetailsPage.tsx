@@ -67,10 +67,10 @@ export function ProjectDetailsPage() {
           <ToggleButton value={1}><DashboardOutlinedIcon fontSize="small" /> Tablou de bord</ToggleButton>
           <ToggleButton value={2}><CheckBoxOutlinedIcon fontSize="small" /> Taskuri</ToggleButton>
           <ToggleButton value={3}><CalendarMonthOutlinedIcon fontSize="small" /> Plan</ToggleButton>
-          <ToggleButton value={4}><ReportProblemOutlinedIcon fontSize="small" /> Problems</ToggleButton>
+          <ToggleButton value={4}><ReportProblemOutlinedIcon fontSize="small" /> Probleme</ToggleButton>
           <ToggleButton value={5}><GroupOutlinedIcon fontSize="small" /> Membrii</ToggleButton>
           <ToggleButton value={6}><HistoryRoundedIcon fontSize="small" /> Istoric</ToggleButton>
-          <ToggleButton value={7}><FolderCopyOutlinedIcon fontSize="small" /> Documents</ToggleButton>
+          <ToggleButton value={7}><FolderCopyOutlinedIcon fontSize="small" /> Documente</ToggleButton>
           <ToggleButton value={8}><IosShareOutlinedIcon fontSize="small" /> Export</ToggleButton>
         </ToggleButtonGroup>
         <TabPanel value={tab} index={0}><DescriptionTab projectId={projectId} description={project?.description ?? null} /></TabPanel>

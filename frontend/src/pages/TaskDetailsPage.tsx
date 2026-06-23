@@ -13,6 +13,7 @@ import dayjs from "dayjs";
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
+import { useConfirmDialog } from "../components/useConfirmDialog";
 import { apiDate } from "../utils/dateTime";
 import type { ProjectDocument } from "./project/DocumentsTab";
 
@@ -31,6 +32,7 @@ function formatMinutes(minutes: number) {
 
 export function TaskDetailsPage() {
   const nav = useNavigate();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const params = useParams();
   const taskId = Number(params.taskId);
   const [task, setTask] = useState<MyTask | null>(null);
@@ -108,7 +110,13 @@ export function TaskDetailsPage() {
 
   async function closeTask() {
     if (!task) return;
-    if (!window.confirm("Confirmi închiderea acestui task? După închidere, taskul este considerat finalizat.")) return;
+    const confirmed = await confirm({
+      title: "Închidere task",
+      description: "Confirmi închiderea acestui task? După închidere, taskul este considerat finalizat.",
+      confirmLabel: "Închide taskul",
+      tone: "warning",
+    });
+    if (!confirmed) return;
     setLoading(true);
     setError(null);
     try {
@@ -194,6 +202,7 @@ export function TaskDetailsPage() {
           </>
         ) : null}
       </Stack>
+      {confirmDialog}
     </AppLayout>
   );
 }
