@@ -27,7 +27,17 @@ type TaskItem = {
   title: string;
 };
 
-export function ProjectDocumentsList({ documents, onOpen, onDelete }: { documents: ProjectDocument[]; onOpen: (doc: ProjectDocument) => void; onDelete?: (id: number) => void }) {
+export function ProjectDocumentsList({
+  documents,
+  onOpen,
+  onDelete,
+  taskTitlesById = {},
+}: {
+  documents: ProjectDocument[];
+  onOpen: (doc: ProjectDocument) => void;
+  onDelete?: (id: number) => void;
+  taskTitlesById?: Record<number, string>;
+}) {
   return (
     <Stack spacing={1.5}>
       {documents.map((doc) => (
@@ -38,8 +48,8 @@ export function ProjectDocumentsList({ documents, onOpen, onDelete }: { document
                 <InsertDriveFileOutlinedIcon sx={{ color: "text.secondary" }} />
                 <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ fontWeight: 900 }}>{doc.file_name}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: 14 }}>{doc.description || "Fara descriere"}</Typography>
-                  <Chip size="small" label={doc.task_id ? `Task #${doc.task_id}` : "Nivel proiect"} sx={{ mt: 1, fontWeight: 800 }} />
+                  <Typography sx={{ color: "text.secondary", fontSize: 14 }}>{doc.description || "Fără descriere"}</Typography>
+                  <Chip size="small" label={doc.task_id ? taskTitlesById[doc.task_id] ?? `Task șters #${doc.task_id}` : "Nivel proiect"} sx={{ mt: 1, fontWeight: 800 }} />
                 </Box>
               </Stack>
               <Stack direction="row" spacing={1}>
@@ -153,6 +163,7 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
     if (filter === "all") return true;
     return doc.task_id === Number(filter);
   });
+  const taskTitlesById = Object.fromEntries(tasks.map((task) => [task.id, task.title]));
 
   return (
     <Stack spacing={2}>
@@ -206,7 +217,12 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
         </Stack>
       ) : null}
 
-      <ProjectDocumentsList documents={visibleDocuments} onOpen={(doc) => void openDocument(doc)} onDelete={(id) => void deleteDocument(id)} />
+      <ProjectDocumentsList
+        documents={visibleDocuments}
+        taskTitlesById={taskTitlesById}
+        onOpen={(doc) => void openDocument(doc)}
+        onDelete={(id) => void deleteDocument(id)}
+      />
       {confirmDialog}
     </Stack>
   );
