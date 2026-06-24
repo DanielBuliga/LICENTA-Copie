@@ -42,6 +42,8 @@ type MeResponse = {
 
 type GenerateResponse = {
   blocks_created: number;
+  blocks_removed: number;
+  blocks_preserved: number;
   assignments_created: number;
   assignments_preserved: number;
   at_risk: { task_id: number; reason: string }[];
@@ -174,7 +176,8 @@ export function PlanTab({ projectId }: { projectId: number }) {
       {error ? <Alert severity="error">{error}</Alert> : null}
       {result ? (
         <Alert severity={result.at_risk.length ? "warning" : "success"}>
-          {lastAction === "replan" ? "Replanificare finalizată" : "Plan generat"}: {result.blocks_created} blocuri,{" "}
+          {lastAction === "replan" ? "Replanificare finalizată" : "Plan generat"}: {result.blocks_created} blocuri create,{" "}
+          {lastAction === "replan" ? `${result.blocks_removed} blocuri eliminate, ${result.blocks_preserved} blocuri păstrate, ` : ""}
           {result.assignments_created} assignmenturi noi, {result.assignments_preserved} assignmenturi păstrate.{" "}
           {resultSummary?.affectedTaskCount
             ? `${resultSummary.affectedTaskCount} task-uri AT_RISK${resultSummary.problemCount !== resultSummary.affectedTaskCount ? `, ${resultSummary.problemCount} probleme detectate` : ""}.`

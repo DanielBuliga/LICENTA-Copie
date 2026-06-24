@@ -1,10 +1,12 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
-from app.models.task import Task
-from app.models.scheduled_block import ScheduledBlock
-from app.models.task_dependency import TaskDependency
-from app.models.task_assignment import TaskAssignment
 from app.models.project_member import ProjectMember
+from app.models.scheduled_block import ScheduledBlock
+from app.models.task import Task
+from app.models.task_assignment import TaskAssignment
+from app.models.task_dependency import TaskDependency
 from app.models.user import User
 from app.services.eligibility_service import eligible_members_for_task
 from app.services.tasks_service import leaf_tasks, task_path
@@ -13,55 +15,90 @@ from app.utils.time_utils import utc_naive
 
 def compute_problems(db: Session, project_id: int) -> list[dict]:
     all_tasks = db.query(Task).filter(Task.project_id == project_id).all()
-    tasks = [task for task in leaf_tasks(db, project_id) if task.status != "CLOSED"]
+    tasks = [task for task in leaf_tasks(db, project_id) if task.status not in {"CLOSED", "READY_TO_CLOSE"}]
     parent_ids = {task.parent_task_id for task in all_tasks if task.parent_task_id is not None}
     tasks_by_id = {task.id: task for task in tasks}
     deps = db.query(TaskDependency).filter(TaskDependency.project_id == project_id).all()
+    now_naive = utc_naive(datetime.now(timezone.utc))
 
     planned_by_task: dict[int, int] = {t.id: 0 for t in tasks}
+    missed_by_task: dict[int, int] = {t.id: 0 for t in tasks}
 
-    for t in tasks:
-        deadline_naive = utc_naive(t.deadline)
-
+    for task in tasks:
+        deadline_naive = utc_naive(task.deadline)
         blocks = (
             db.query(ScheduledBlock)
             .filter(
                 ScheduledBlock.project_id == project_id,
-                ScheduledBlock.task_id == t.id,
+                ScheduledBlock.task_id == task.id,
                 ScheduledBlock.start_datetime < deadline_naive,
             )
             .all()
         )
-        planned_by_task[t.id] = sum(b.planned_minutes for b in blocks)
+        planned_by_task[task.id] = sum(
+            block.planned_minutes
+            for block in blocks
+            if block.block_status == "DONE" or block.end_datetime >= now_naive
+        )
+        missed_by_task[task.id] = sum(
+            block.planned_minutes
+            for block in blocks
+            if block.block_status == "PLANNED" and block.end_datetime < now_naive
+        )
 
-    fully_planned = {t.id for t in tasks if planned_by_task.get(t.id, 0) >= t.estimate_minutes}
-
+    fully_planned = {task.id for task in tasks if planned_by_task.get(task.id, 0) >= task.estimate_minutes}
     problems: list[dict] = []
 
-    for t in tasks:
-        eligible = eligible_members_for_task(db, project_id, t.id)
-        if len(eligible) == 0:
+    for task in tasks:
+        deadline_naive = utc_naive(task.deadline)
+        missed = missed_by_task.get(task.id, 0)
+        if missed > 0:
             problems.append(
                 {
-                    "task_id": t.id,
-                    "task_title": t.title,
-                    "task_path": task_path(db, t),
-                    "type": "NO_SKILLS",
-                    "reason": "Nu există niciun membru eligibil pe baza skillurilor cerute.",
-                    "deadline": t.deadline,
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_path": task_path(db, task),
+                    "type": "MISSED_PLANNED_WORK",
+                    "reason": f"{missed} min planificate au trecut fără să fie marcate ca realizate.",
+                    "deadline": task.deadline,
                 }
             )
 
-        planned = planned_by_task.get(t.id, 0)
-        if planned < t.estimate_minutes:
+        if deadline_naive <= now_naive:
             problems.append(
                 {
-                    "task_id": t.id,
-                    "task_title": t.title,
-                    "task_path": task_path(db, t),
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_path": task_path(db, task),
+                    "type": "DEADLINE_PASSED",
+                    "reason": "Deadline-ul a trecut; taskul nu mai poate fi replanificat fără modificarea deadline-ului.",
+                    "deadline": task.deadline,
+                }
+            )
+
+        eligible = eligible_members_for_task(db, project_id, task.id)
+        if len(eligible) == 0:
+            problems.append(
+                {
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_path": task_path(db, task),
+                    "type": "NO_SKILLS",
+                    "reason": "Nu există niciun membru eligibil pe baza skillurilor cerute.",
+                    "deadline": task.deadline,
+                }
+            )
+
+        planned = planned_by_task.get(task.id, 0)
+        if planned < task.estimate_minutes:
+            problems.append(
+                {
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_path": task_path(db, task),
                     "type": "AT_RISK",
-                    "reason": f"Planificat {planned} min din {t.estimate_minutes} min necesare.",
-                    "deadline": t.deadline,
+                    "reason": f"Planificat {planned} min din {task.estimate_minutes} min necesare.",
+                    "deadline": task.deadline,
                 }
             )
 
@@ -70,7 +107,7 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
             .join(ProjectMember, ProjectMember.user_id == TaskAssignment.user_id)
             .join(User, User.id == TaskAssignment.user_id)
             .filter(
-                TaskAssignment.task_id == t.id,
+                TaskAssignment.task_id == task.id,
                 ProjectMember.project_id == project_id,
                 ProjectMember.status == "INACTIVE",
             )
@@ -81,64 +118,66 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
                 continue
             problems.append(
                 {
-                    "task_id": t.id,
-                    "task_title": t.title,
-                    "task_path": task_path(db, t),
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_path": task_path(db, task),
                     "type": "INACTIVE_MEMBER",
                     "reason": f"Membrul {user.name or user.email} este inactiv, dar are assignment activ pe acest task.",
-                    "deadline": t.deadline,
+                    "deadline": task.deadline,
                 }
             )
 
-    for d in deps:
-        if d.successor_task_id in parent_ids:
+    for dep in deps:
+        if dep.successor_task_id in parent_ids:
             continue
-        if d.predecessor_task_id not in fully_planned:
-            successor = tasks_by_id.get(d.successor_task_id)
-            predecessor = next((task for task in all_tasks if task.id == d.predecessor_task_id), None)
+        if dep.predecessor_task_id not in fully_planned:
+            successor = tasks_by_id.get(dep.successor_task_id)
+            predecessor = next((task for task in all_tasks if task.id == dep.predecessor_task_id), None)
             problems.append(
                 {
-                    "task_id": d.successor_task_id,
+                    "task_id": dep.successor_task_id,
                     "task_title": successor.title if successor else None,
                     "task_path": task_path(db, successor) if successor else None,
                     "type": "BLOCKED",
-                    "reason": f"Blocat de taskul {predecessor.title if predecessor else f'#{d.predecessor_task_id}'}.",
+                    "reason": f"Blocat de taskul {predecessor.title if predecessor else f'#{dep.predecessor_task_id}'}.",
                     "deadline": successor.deadline if successor else None,
                 }
             )
 
-    problems = [p for p in problems if p.get("deadline") is not None]
+    problems = [problem for problem in problems if problem.get("deadline") is not None]
 
     unique = {}
-    for p in problems:
-        key = (p["task_id"], p["type"], p["reason"])
-        unique[key] = p
+    for problem in problems:
+        key = (problem["task_id"], problem["type"], problem["reason"])
+        unique[key] = problem
 
     priority = {
-        "INACTIVE_MEMBER": 0,
-        "NO_SKILLS": 1,
-        "BLOCKED": 2,
-        "AT_RISK": 3,
+        "MISSED_PLANNED_WORK": 0,
+        "DEADLINE_PASSED": 1,
+        "INACTIVE_MEMBER": 2,
+        "NO_SKILLS": 3,
+        "BLOCKED": 4,
+        "AT_RISK": 5,
     }
     grouped: dict[int, dict] = {}
-    for p in unique.values():
-        task_id = p["task_id"]
+    for problem in unique.values():
+        task_id = problem["task_id"]
         current = grouped.get(task_id)
         if current is None:
             grouped[task_id] = {
-                **p,
-                "types": [p["type"]],
-                "reasons": [p["reason"]],
+                **problem,
+                "types": [problem["type"]],
+                "reasons": [problem["reason"]],
             }
             continue
 
-        if p["type"] not in current["types"]:
-            current["types"].append(p["type"])
-        if p["reason"] not in current["reasons"]:
-            current["reasons"].append(p["reason"])
-        if priority.get(p["type"], 99) < priority.get(current["type"], 99):
-            current["type"] = p["type"]
-            current["reason"] = p["reason"]
+        if problem["type"] not in current["types"]:
+            current["types"].append(problem["type"])
+        if problem["reason"] not in current["reasons"]:
+            current["reasons"].append(problem["reason"])
+        if priority.get(problem["type"], 99) < priority.get(current["type"], 99):
+            current["type"] = problem["type"]
+            current["reason"] = problem["reason"]
 
     for item in grouped.values():
         item["types"].sort(key=lambda value: priority.get(value, 99))

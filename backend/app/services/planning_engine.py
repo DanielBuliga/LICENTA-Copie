@@ -17,6 +17,7 @@ def pack_task_into_slots(
     user_id: int,
     slots: list[tuple],
     earliest_start: datetime,
+    minutes_to_plan: int | None = None,
 ) -> tuple[int, int, datetime | None]:
     """
     Create ScheduledBlocks for task in the given slots.
@@ -25,12 +26,13 @@ def pack_task_into_slots(
     We store UTC-naive datetimes in MySQL (DATETIME) for consistency.
 
     earliest_start: do not schedule this task before this time.
+    minutes_to_plan: optional remaining effort to place, used by replan.
     Returns: (created_blocks_count, remaining_minutes, last_end_time_utc_aware)
     """
     deadline_utc = as_utc(task.deadline)
     earliest_start_utc = as_utc(earliest_start)
 
-    remaining = task.estimate_minutes
+    remaining = task.estimate_minutes if minutes_to_plan is None else max(minutes_to_plan, 0)
     created = 0
     last_end: datetime | None = None
 

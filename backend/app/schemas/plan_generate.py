@@ -14,6 +14,8 @@ class AtRiskItem(BaseModel):
 
 class PlanGenerateResponse(BaseModel):
     blocks_created: int
+    blocks_removed: int = 0
+    blocks_preserved: int = 0
     assignments_created: int = 0
     assignments_preserved: int = 0
     at_risk: list[AtRiskItem]

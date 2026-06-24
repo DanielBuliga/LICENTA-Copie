@@ -99,6 +99,38 @@ def _load_schedule_signatures(
     return {key: _block_signature(value) for key, value in grouped.items()}
 
 
+def _expand_with_successors(seed_task_ids: set[int], deps: list) -> set[int]:
+    affected = set(seed_task_ids)
+    changed = True
+    while changed:
+        changed = False
+        for dep in deps:
+            if dep.predecessor_task_id in affected and dep.successor_task_id not in affected:
+                affected.add(dep.successor_task_id)
+                changed = True
+    return affected
+
+
+def _already_covered_minutes(db: Session, project_id: int, task: Task) -> int:
+    now_naive = utc_naive(datetime.now(timezone.utc))
+    deadline_naive = utc_naive(task.deadline)
+    blocks = (
+        db.query(ScheduledBlock)
+        .filter(
+            ScheduledBlock.project_id == project_id,
+            ScheduledBlock.task_id == task.id,
+            ScheduledBlock.start_datetime < deadline_naive,
+        )
+        .all()
+    )
+    return sum(
+        block.planned_minutes
+        for block in blocks
+        if block.block_status == "DONE"
+        or (block.block_status == "PLANNED" and block.end_datetime >= now_naive)
+    )
+
+
 @router.post("/generate", response_model=PlanGenerateResponse)
 def generate_plan(
     project_id: int,
@@ -120,6 +152,7 @@ def generate_plan(
     start_dt_aware = local_midnight_to_utc(start_day)  # aware UTC
     start_dt = utc_naive(start_dt_aware)               # naive UTC (for SQL)
     end_dt = start_dt + timedelta(days=horizon_days)   # naive UTC (for SQL)
+    incremental_replan = bool(db.info.get("incremental_replan"))
     old_schedule = _load_schedule_signatures(db, project_id, start_dt, end_dt)
     old_assignment_keys = {
         (assignment.task_id, assignment.user_id)
@@ -129,20 +162,52 @@ def generate_plan(
         .all()
     }
 
-    # Clear existing blocks for this project in the horizon
-    db.query(ScheduledBlock).filter(
-        ScheduledBlock.project_id == project_id,
-        ScheduledBlock.start_datetime >= start_dt,
-        ScheduledBlock.start_datetime < end_dt,
-    ).delete()
+    deps = list_dependencies(db, project_id)
+    affected_task_ids: set[int] | None = None
+    if incremental_replan:
+        initial_problems = compute_problems(db, project_id)
+        problem_task_ids = {item["task_id"] for item in initial_problems if item.get("task_id") is not None}
+        affected_task_ids = _expand_with_successors(problem_task_ids, deps)
+
+    if incremental_replan:
+        delete_query = db.query(ScheduledBlock).filter(
+            ScheduledBlock.project_id == project_id,
+            ScheduledBlock.start_datetime < end_dt,
+        )
+        if affected_task_ids:
+            delete_query = delete_query.filter(
+                ScheduledBlock.task_id.in_(affected_task_ids),
+                ScheduledBlock.block_status == "PLANNED",
+            )
+        else:
+            delete_query = delete_query.filter(ScheduledBlock.id == -1)
+    else:
+        delete_query = db.query(ScheduledBlock).filter(
+            ScheduledBlock.project_id == project_id,
+            ScheduledBlock.start_datetime >= start_dt,
+            ScheduledBlock.start_datetime < end_dt,
+        )
+    blocks_removed = delete_query.delete(synchronize_session=False)
     db.commit()
+    blocks_preserved = (
+        db.query(ScheduledBlock)
+        .filter(
+            ScheduledBlock.project_id == project_id,
+            ScheduledBlock.start_datetime >= start_dt,
+            ScheduledBlock.start_datetime < end_dt,
+        )
+        .count()
+        if incremental_replan
+        else 0
+    )
 
     # Collect tasks that still need work. READY_TO_CLOSE means all assignees already finished.
     tasks = [t for t in leaf_tasks(db, project_id) if t.status not in {"CLOSED", "READY_TO_CLOSE"}]
+    if incremental_replan:
+        tasks = [t for t in tasks if affected_task_ids and t.id in affected_task_ids]
     task_ids = {t.id for t in tasks}
 
     # Build dependency graph
-    deps = list_dependencies(db, project_id)
     edges = [(d.predecessor_task_id, d.successor_task_id) for d in deps]
 
     indeg = {tid: 0 for tid in task_ids}
@@ -186,7 +251,7 @@ def generate_plan(
         deadline_utc = as_utc(task.deadline)
 
         # Earliest start based on predecessors finish (aware UTC)
-        earliest_start = start_dt_aware
+        earliest_start = max(start_dt_aware, now_utc)
 
         blocked = False
         for p_id in pred.get(task.id, []):
@@ -202,10 +267,20 @@ def generate_plan(
         elif deadline_utc <= now_utc:
             at_risk.append(AtRiskItem(task_id=task.id, reason="Deadline already passed"))
         else:
-            eligible_users_all = eligible_members_for_task(db, project_id, task.id)
+            already_covered = _already_covered_minutes(db, project_id, task) if incremental_replan else 0
+            minutes_to_plan = max(task.estimate_minutes - already_covered, 0)
+            planning_done = False
+            if minutes_to_plan <= 0:
+                fully_planned.add(task.id)
+                finish_time[task.id] = earliest_start
+                planning_done = True
+
+            eligible_users_all = [] if planning_done else eligible_members_for_task(db, project_id, task.id)
             eligible_users_all = [u for u in eligible_users_all if u in member_ids]
 
-            if not eligible_users_all:
+            if planning_done:
+                pass
+            elif not eligible_users_all:
                 at_risk.append(AtRiskItem(task_id=task.id, reason="No eligible member (skills)"))
             else:
                 assigned_users = list_assigned_user_ids(db, task.id)
@@ -241,6 +316,7 @@ def generate_plan(
                         user_id=best_user,
                         slots=slots_by_user[best_user],
                         earliest_start=earliest_start,
+                        minutes_to_plan=minutes_to_plan,
                     )
                     blocks_created += created
 
@@ -306,12 +382,14 @@ def generate_plan(
         db,
         project_id,
         "PLAN_GENERATED",
-        "Planificare generata",
+        "Replanificare generata" if incremental_replan else "Planificare generata",
         actor_id=current_user.id,
         entity_type="PLAN",
         entity_id=project_id,
         details=(
             f"Blocuri create: {blocks_created}. "
+            f"Blocuri eliminate: {blocks_removed}. "
+            f"Blocuri pastrate: {blocks_preserved}. "
             f"Asignari create: {assignments_created}. "
             f"Asignari pastrate: {assignments_preserved}. "
             f"Probleme: {len(response_at_risk)}."
@@ -320,6 +398,8 @@ def generate_plan(
 
     return PlanGenerateResponse(
         blocks_created=blocks_created,
+        blocks_removed=blocks_removed,
+        blocks_preserved=blocks_preserved,
         assignments_created=assignments_created,
         assignments_preserved=assignments_preserved,
         at_risk=response_at_risk,
@@ -334,4 +414,8 @@ def replan(
     current_user=Depends(get_current_user),
 ):
     req = PlanGenerateRequest(start_day=payload.today, horizon_days=payload.horizon_days)
-    return generate_plan(project_id=project_id, payload=req, db=db, current_user=current_user)
+    db.info["incremental_replan"] = True
+    try:
+        return generate_plan(project_id=project_id, payload=req, db=db, current_user=current_user)
+    finally:
+        db.info.pop("incremental_replan", None)
