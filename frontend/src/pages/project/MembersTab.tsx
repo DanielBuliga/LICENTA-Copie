@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Avatar,
@@ -18,6 +18,7 @@ import {
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -26,6 +27,7 @@ import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import AssignmentTurnedInOutlinedIcon from "@mui/icons-material/AssignmentTurnedInOutlined";
 import CheckCircleOutlineRoundedIcon from "@mui/icons-material/CheckCircleOutlineRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
 
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
@@ -59,6 +61,16 @@ type AssignmentItem = {
   member_status: "TODO" | "IN_PROGRESS" | "DONE";
 };
 
+type SkillItem = {
+  id: number;
+  name: string;
+};
+
+type MemberSkillItem = {
+  user_id: number;
+  skill_id: number;
+};
+
 type MemberRemoveResponse = {
   action: "deleted" | "deactivated";
   status: "INACTIVE" | null;
@@ -71,11 +83,88 @@ function roleMeta(role: MemberItem["role"]) {
   return { label: "MEMBER", color: "#64748B", soft: "#EEF2F7" };
 }
 
+function estimatedChipWidth(label: string) {
+  return Math.min(170, Math.max(58, label.length * 7 + 34));
+}
+
+function MemberSkillPreview({
+  skills,
+  member,
+  accent,
+  onOpen,
+}: {
+  skills: SkillItem[];
+  member: MemberItem;
+  accent: { soft: string; text: string };
+  onOpen: (member: MemberItem) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [rowWidth, setRowWidth] = useState(0);
+
+  useEffect(() => {
+    const node = rowRef.current;
+    if (!node) return;
+    const updateWidth = () => setRowWidth(node.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const visibleCount = useMemo(() => {
+    if (!skills.length) return 0;
+    if (!rowWidth) return Math.min(skills.length, 4);
+
+    const gap = 6;
+    const widths = skills.map((skill) => estimatedChipWidth(skill.name));
+    const totalWidth = widths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, widths.length - 1);
+    if (totalWidth <= rowWidth) return skills.length;
+
+    const moreChipWidth = 50;
+    let used = 0;
+    let count = 0;
+    for (const width of widths) {
+      const nextUsed = used + width + (count ? gap : 0);
+      if (nextUsed + gap + moreChipWidth > rowWidth) break;
+      used = nextUsed;
+      count += 1;
+    }
+    return Math.max(1, count);
+  }, [rowWidth, skills]);
+
+  if (!skills.length) {
+    return <Typography sx={{ color: "text.disabled", fontSize: 13 }}>Fără competențe setate</Typography>;
+  }
+
+  const visibleSkills = skills.slice(0, visibleCount);
+  const extraSkillCount = Math.max(0, skills.length - visibleSkills.length);
+
+  return (
+    <Box ref={rowRef} sx={{ display: "flex", gap: 0.75, alignItems: "center", overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 }}>
+      {visibleSkills.map((skill) => (
+        <Chip key={skill.id} size="small" label={skill.name} sx={{ fontWeight: 800, flexShrink: 0, maxWidth: 170 }} />
+      ))}
+      {extraSkillCount > 0 ? (
+        <Tooltip title="Vezi toate competențele">
+          <Chip
+            size="small"
+            label={`+${extraSkillCount}`}
+            onClick={() => onOpen(member)}
+            sx={{ fontWeight: 900, cursor: "pointer", bgcolor: accent.soft, color: accent.text, flexShrink: 0 }}
+          />
+        </Tooltip>
+      ) : null}
+    </Box>
+  );
+}
+
 export function MembersTab({ projectId }: { projectId: number }) {
   const accent = useAccentColor();
   const { confirm, confirmDialog } = useConfirmDialog();
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [memberStats, setMemberStats] = useState<Record<number, { assigned: number; done: number }>>({});
+  const [memberSkills, setMemberSkills] = useState<Record<number, SkillItem[]>>({});
+  const [skillsDialogMember, setSkillsDialogMember] = useState<MemberItem | null>(null);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [projectCreatorId, setProjectCreatorId] = useState<number | null>(null);
   const [email, setEmail] = useState("");
@@ -100,7 +189,11 @@ export function MembersTab({ projectId }: { projectId: number }) {
         api.get<CurrentUser>("/users/me"),
         api.get<ProjectInfo>(`/projects/${projectId}`),
       ]);
-      const tasksRes = await api.get<TaskItem[]>(`/projects/${projectId}/tasks`);
+      const [tasksRes, skillsRes, memberSkillsRes] = await Promise.all([
+        api.get<TaskItem[]>(`/projects/${projectId}/tasks`),
+        api.get<SkillItem[]>("/skills"),
+        api.get<MemberSkillItem[]>(`/projects/${projectId}/member-skills`),
+      ]);
       const assignmentPairs = await Promise.all(
         tasksRes.data.map(async (task) => {
           const res = await api.get<AssignmentItem[]>(`/tasks/${task.id}/assignments`);
@@ -119,8 +212,24 @@ export function MembersTab({ projectId }: { projectId: number }) {
           nextStats[assignment.user_id] = stats;
         }
       }
+      const skillById = new Map(skillsRes.data.map((skill) => [skill.id, skill]));
+      const nextSkills: Record<number, SkillItem[]> = {};
+      for (const member of membersRes.data) {
+        nextSkills[member.user_id] = [];
+      }
+      for (const row of memberSkillsRes.data) {
+        const skill = skillById.get(row.skill_id);
+        if (!skill) continue;
+        const list = nextSkills[row.user_id] ?? [];
+        list.push(skill);
+        nextSkills[row.user_id] = list;
+      }
+      for (const userId of Object.keys(nextSkills)) {
+        nextSkills[Number(userId)].sort((a, b) => a.name.localeCompare(b.name));
+      }
       setMembers(membersRes.data);
       setMemberStats(nextStats);
+      setMemberSkills(nextSkills);
       setCurrentUserId(meRes.data.id);
       setProjectCreatorId(projectRes.data.created_by);
     } catch (err: unknown) {
@@ -242,6 +351,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
           const canEditRole = isOwner && !isInactive && member.user_id !== projectCreatorId;
           const canEditStatus = isOwner && member.user_id !== projectCreatorId;
           const stats = memberStats[member.user_id] ?? { assigned: 0, done: 0 };
+          const skills = memberSkills[member.user_id] ?? [];
 
           return (
             <Card key={member.user_id} sx={{ opacity: isInactive ? 0.72 : 1 }}>
@@ -359,6 +469,17 @@ export function MembersTab({ projectId }: { projectId: number }) {
                     </Button>
                   ) : null}
                 </Stack>
+
+                <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", mb: 1 }}>
+                    <PsychologyRoundedIcon sx={{ color: "text.secondary", fontSize: 18 }} />
+                    <Typography sx={{ color: "text.secondary", fontSize: 13, fontWeight: 900 }}>
+                      Competențe
+                    </Typography>
+                  </Stack>
+                  <MemberSkillPreview skills={skills} member={member} accent={accent} onOpen={setSkillsDialogMember} />
+                </Box>
+
                 {member.inactive_reason ? (
                   <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 1.5 }}>
                     Motiv: {member.inactive_reason}
@@ -371,7 +492,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
       </Box>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Adauga membru</DialogTitle>
+        <DialogTitle>Adaugă membru</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="Email" placeholder="email@exemplu.com" value={email} onChange={(event) => setEmail(event.target.value)} fullWidth autoFocus />
@@ -386,10 +507,40 @@ export function MembersTab({ projectId }: { projectId: number }) {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Anuleaza</Button>
+          <Button onClick={() => setDialogOpen(false)}>Anulează</Button>
           <Button variant="contained" onClick={addMember} disabled={!email.trim() || loading}>
-            Adauga
+            Adaugă
           </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(skillsDialogMember)} onClose={() => setSkillsDialogMember(null)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          Competențe membru
+        </DialogTitle>
+        <DialogContent>
+          {skillsDialogMember ? (
+            <Stack spacing={2} sx={{ mt: 0.5 }}>
+              <Box>
+                <Typography sx={{ fontWeight: 950 }}>
+                  {skillsDialogMember.name || `User #${skillsDialogMember.user_id}`}
+                </Typography>
+                <Typography sx={{ color: "text.secondary", fontSize: 14 }}>
+                  {skillsDialogMember.email ?? "email indisponibil"}
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+                {(memberSkills[skillsDialogMember.user_id] ?? []).map((skill) => (
+                  <Chip key={skill.id} label={skill.name} sx={{ fontWeight: 850 }} />
+                ))}
+                {(memberSkills[skillsDialogMember.user_id] ?? []).length === 0 ? (
+                  <Typography sx={{ color: "text.secondary" }}>Membrul nu are competențe setate.</Typography>
+                ) : null}
+              </Stack>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSkillsDialogMember(null)}>Închide</Button>
         </DialogActions>
       </Dialog>
       {confirmDialog}

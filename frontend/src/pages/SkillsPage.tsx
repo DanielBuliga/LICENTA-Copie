@@ -22,14 +22,12 @@ import BuildRoundedIcon from "@mui/icons-material/BuildRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import StarBorderRoundedIcon from "@mui/icons-material/StarBorderRounded";
-import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
 import { useConfirmDialog } from "../components/useConfirmDialog";
 import { useAccentColor } from "../hooks/useAccentColor";
-import type { ProjectListItem } from "../api/types";
 
 type Skill = {
   id: number;
@@ -46,21 +44,12 @@ type UserSkill = {
   skill_id: number;
 };
 
-type MemberSkill = UserSkill & {
-  user_id: number;
-  user_name?: string | null;
-  user_email?: string | null;
-};
-
 export function SkillsPage() {
   const accent = useAccentColor();
   const { confirm, confirmDialog } = useConfirmDialog();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [aliasesBySkill, setAliasesBySkill] = useState<Record<number, SkillAlias[]>>({});
   const [mySkills, setMySkills] = useState<UserSkill[]>([]);
-  const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [memberSkills, setMemberSkills] = useState<MemberSkill[]>([]);
   const [selectedSkillId, setSelectedSkillId] = useState("");
   const [newSkillName, setNewSkillName] = useState("");
   const [newAliasBySkill, setNewAliasBySkill] = useState<Record<number, string>>({});
@@ -73,10 +62,9 @@ export function SkillsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [skillsRes, mySkillsRes, projectsRes] = await Promise.all([
+      const [skillsRes, mySkillsRes] = await Promise.all([
         api.get<Skill[]>("/skills"),
         api.get<UserSkill[]>("/users/me/skills"),
-        api.get<ProjectListItem[]>("/projects"),
       ]);
       setSkills(skillsRes.data);
       const aliasPairs = await Promise.all(
@@ -87,9 +75,6 @@ export function SkillsPage() {
       );
       setAliasesBySkill(Object.fromEntries(aliasPairs));
       setMySkills(mySkillsRes.data);
-      const managedProjects = projectsRes.data.filter((project) => project.role === "OWNER" || project.role === "ADMIN");
-      setProjects(managedProjects);
-      setSelectedProjectId((current) => current || (managedProjects[0] ? String(managedProjects[0].id) : ""));
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca competențele"));
     } finally {
@@ -97,26 +82,9 @@ export function SkillsPage() {
     }
   }, []);
 
-  const loadMemberSkills = useCallback(async (projectId: string) => {
-    if (!projectId) {
-      setMemberSkills([]);
-      return;
-    }
-    try {
-      const res = await api.get<MemberSkill[]>(`/projects/${projectId}/member-skills`);
-      setMemberSkills(res.data);
-    } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut încărca skillurile membrilor"));
-    }
-  }, []);
-
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    void loadMemberSkills(selectedProjectId);
-  }, [loadMemberSkills, selectedProjectId]);
 
   const mySkillIds = useMemo(() => new Set(mySkills.map((skill) => skill.skill_id)), [mySkills]);
   const availableToAdd = skills.filter((skill) => !mySkillIds.has(skill.id));
@@ -244,14 +212,6 @@ export function SkillsPage() {
       setSaving(false);
     }
   }
-
-  const memberSkillsByUser = useMemo(() => {
-    const grouped = new Map<number, MemberSkill[]>();
-    memberSkills.forEach((row) => {
-      grouped.set(row.user_id, [...(grouped.get(row.user_id) ?? []), row]);
-    });
-    return [...grouped.entries()];
-  }, [memberSkills]);
 
   return (
     <AppLayout title="Competențe" eyebrow="Profil și eligibilitate">
@@ -431,44 +391,6 @@ export function SkillsPage() {
             </CardContent>
           </Card>
         </Box>
-
-        <Card>
-          <CardContent sx={{ p: 3 }}>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ alignItems: { xs: "stretch", sm: "center" }, justifyContent: "space-between", mb: 2 }}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                <GroupsRoundedIcon sx={{ color: accent.value }} />
-                <Box>
-                  <Typography variant="h6">Skillurile membrilor</Typography>
-                  <Typography sx={{ color: "text.secondary" }}>Skillurile sunt declarate direct de utilizatori. Owner/Admin le poate consulta pentru planificare.</Typography>
-                </Box>
-              </Stack>
-              <FormControl sx={{ minWidth: 240 }}>
-                <InputLabel id="managed-project-label">Proiect</InputLabel>
-                <Select labelId="managed-project-label" label="Proiect" value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
-                  {projects.map((project) => <MenuItem key={project.id} value={String(project.id)}>{project.title}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Stack>
-
-            <Stack spacing={1.25}>
-              {memberSkillsByUser.map(([userId, rows]) => {
-                const first = rows[0];
-                return (
-                  <Box key={userId} sx={{ p: 1.5, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                    <Typography sx={{ fontWeight: 900 }}>{first.user_name || first.user_email || `User #${userId}`}</Typography>
-                    <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mt: 1 }}>
-                      {rows.map((row) => (
-                        <Chip key={`${row.user_id}-${row.skill_id}`} label={skillName(row.skill_id)} sx={{ fontWeight: 800 }} />
-                      ))}
-                    </Stack>
-                  </Box>
-                );
-              })}
-              {projects.length === 0 ? <Typography sx={{ color: "text.secondary" }}>Nu administrezi niciun proiect momentan.</Typography> : null}
-              {projects.length > 0 && memberSkills.length === 0 ? <Typography sx={{ color: "text.secondary" }}>Membrii proiectului nu au skilluri personale adăugate.</Typography> : null}
-            </Stack>
-          </CardContent>
-        </Card>
       </Stack>
       {confirmDialog}
     </AppLayout>
