@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, LinearProgress, Stack, TextField, Typography } from "@mui/material";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
@@ -197,6 +197,9 @@ export function PlanTab({ projectId }: { projectId: number }) {
       {canManagePlan ? (
       <Card>
         <CardContent sx={{ p: 3 }}>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Generează plan reconstruiește planul pentru tot intervalul ales. Replanifică repară doar taskurile cu probleme și păstrează blocurile valide deja stabilite.
+          </Alert>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ alignItems: { xs: "stretch", md: "center" } }}>
             <TextField
               label="Start"
@@ -208,11 +211,11 @@ export function PlanTab({ projectId }: { projectId: number }) {
               slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: dayjs().format("YYYY-MM-DD") } }}
             />
             <TextField
-              label="Orizont zile"
+              label="Perioadă planificare (zile)"
               type="number"
               value={horizonDays}
               onChange={(event) => setHorizonDays(Number(event.target.value))}
-              helperText="Câte zile înainte caută algoritmul sloturi libere."
+              helperText="Planifică următoarele X zile"
               slotProps={{ htmlInput: { min: 1, max: 30 } }}
             />
             <Button variant="contained" startIcon={<AutoAwesomeRoundedIcon />} onClick={() => void runPlanner("generate")} disabled={loading}>
@@ -382,3 +385,4 @@ export function PlanTab({ projectId }: { projectId: number }) {
     </Stack>
   );
 }
+

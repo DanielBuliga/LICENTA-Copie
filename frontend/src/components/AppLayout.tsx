@@ -14,6 +14,7 @@ import {
   Popover,
   Stack,
   Typography,
+  useTheme,
 } from "@mui/material";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
@@ -77,7 +78,9 @@ let cachedCurrentUser: CurrentUser | null = null;
 export function AppLayout({ title, children }: Props) {
   const nav = useNavigate();
   const location = useLocation();
+  const theme = useTheme();
   const token = getToken();
+  const isDark = theme.palette.mode === "dark";
   const [user, setUser] = useState<CurrentUser | null>(() => (cachedUserToken === token ? cachedCurrentUser : null));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsAnchor, setNotificationsAnchor] = useState<null | HTMLElement>(null);
@@ -194,14 +197,15 @@ export function AppLayout({ title, children }: Props) {
     .toUpperCase();
 
   const drawer = (
-    <Stack sx={{ height: "100%", bgcolor: "#FFFFFF", color: "#111827" }}>
+    <Stack sx={{ height: "100%", bgcolor: "background.paper", color: "text.primary" }}>
       <Box
         sx={{
           height: headerHeight,
           px: 3,
           display: "flex",
           alignItems: "center",
-          borderBottom: "1px solid rgba(17,24,39,0.08)",
+          borderBottom: "1px solid",
+          borderColor: "divider",
         }}
       >
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
@@ -240,13 +244,13 @@ export function AppLayout({ title, children }: Props) {
                 borderRadius: 2,
                 mb: 0.75,
                 minHeight: 50,
-                color: selected ? "#fff" : "#5B6680",
+                color: selected ? "#fff" : "text.secondary",
                 "&.Mui-selected": {
                   bgcolor: accent,
                   boxShadow: "0 10px 26px rgba(76,92,104,0.20)",
                   "&:hover": { bgcolor: accentHover },
                 },
-                "&:hover": { bgcolor: "rgba(17,24,39,0.04)" },
+                "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.06)" : "rgba(17,24,39,0.04)" },
               }}
             >
               <ListItemIcon sx={{ color: "inherit", minWidth: 42 }}>{item.icon}</ListItemIcon>
@@ -257,21 +261,22 @@ export function AppLayout({ title, children }: Props) {
       </List>
 
       {token ? (
-        <Box sx={{ borderTop: "1px solid rgba(17,24,39,0.08)", p: 2 }}>
+        <Box sx={{ borderTop: "1px solid", borderColor: "divider", p: 2 }}>
           <Button
             fullWidth
             component={RouterLink}
             to="/account"
             sx={{
               justifyContent: "flex-start",
-              color: "#111827",
-              bgcolor: "#F8FAFC",
-              border: "1px solid rgba(17,24,39,0.08)",
+              color: "text.primary",
+              bgcolor: isDark ? "rgba(255,255,255,0.05)" : "#F8FAFC",
+              border: "1px solid",
+              borderColor: "divider",
               borderRadius: 2,
               mb: 1.25,
               px: 1.25,
               py: 0.9,
-              "&:hover": { bgcolor: "#F1F5F9" },
+              "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9" },
             }}
           >
             <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", width: "100%", minWidth: 0 }}>
@@ -295,9 +300,9 @@ export function AppLayout({ title, children }: Props) {
             startIcon={<LogoutRoundedIcon />}
             onClick={onLogout}
             sx={{
-              color: "#5B6680",
-              borderColor: "rgba(17,24,39,0.12)",
-              "&:hover": { borderColor: "rgba(17,24,39,0.24)", bgcolor: "rgba(17,24,39,0.04)" },
+              color: "text.secondary",
+              borderColor: "divider",
+              "&:hover": { borderColor: "text.secondary", bgcolor: isDark ? "rgba(255,255,255,0.06)" : "rgba(17,24,39,0.04)" },
             }}
           >
             Deconectare
@@ -308,7 +313,7 @@ export function AppLayout({ title, children }: Props) {
   );
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "#F4F6FA", display: "flex" }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default", display: "flex" }}>
       <Drawer
         variant="permanent"
         sx={{
@@ -319,7 +324,8 @@ export function AppLayout({ title, children }: Props) {
             width: drawerWidth,
             boxSizing: "border-box",
             border: 0,
-            borderRight: "1px solid rgba(17,24,39,0.08)",
+            borderRight: "1px solid",
+            borderColor: "divider",
           },
         }}
       >
@@ -353,8 +359,9 @@ export function AppLayout({ title, children }: Props) {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 2,
-            bgcolor: "rgba(255,255,255,0.86)",
-            borderBottom: "1px solid rgba(17, 24, 39, 0.08)",
+            bgcolor: isDark ? "rgba(17,24,39,0.86)" : "rgba(255,255,255,0.86)",
+            borderBottom: "1px solid",
+            borderColor: "divider",
             position: "sticky",
             top: 0,
             zIndex: 10,
@@ -368,8 +375,9 @@ export function AppLayout({ title, children }: Props) {
                 aria-label="Deschide meniul"
                 sx={{
                   display: { xs: "inline-flex", md: "none" },
-                  bgcolor: "#FFFFFF",
-                  border: "1px solid rgba(17,24,39,0.08)",
+                  bgcolor: "background.paper",
+                  border: "1px solid",
+                  borderColor: "divider",
                   flexShrink: 0,
                 }}
               >
@@ -392,10 +400,11 @@ export function AppLayout({ title, children }: Props) {
               sx={{
                 width: 44,
                 height: 44,
-                bgcolor: "#FFFFFF",
-                border: "1px solid rgba(17,24,39,0.08)",
+                bgcolor: "background.paper",
+                border: "1px solid",
+                borderColor: "divider",
                 boxShadow: "0 8px 22px rgba(15,23,42,0.06)",
-                "&:hover": { bgcolor: "#F8FAFC" },
+                "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.08)" : "#F8FAFC" },
               }}
             >
               <Badge badgeContent={unreadCount} color="error" max={99}>
@@ -455,9 +464,10 @@ export function AppLayout({ title, children }: Props) {
                     borderRadius: 0,
                     px: 2,
                     py: 1.5,
-                    bgcolor: notification.is_read ? "#FFFFFF" : "#F3F6FF",
-                    borderBottom: "1px solid rgba(17,24,39,0.06)",
-                    "&:hover": { bgcolor: notification.is_read ? "#F8FAFC" : "#EEF2FF" },
+                    bgcolor: notification.is_read ? "background.paper" : isDark ? "rgba(126,135,159,0.22)" : "#F3F6FF",
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                    "&:hover": { bgcolor: notification.is_read ? (isDark ? "rgba(255,255,255,0.06)" : "#F8FAFC") : (isDark ? "rgba(126,135,159,0.30)" : "#EEF2FF") },
                   }}
                 >
                   <Stack direction="row" spacing={1.25} sx={{ alignItems: "flex-start" }}>

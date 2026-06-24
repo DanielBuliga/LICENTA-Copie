@@ -1,7 +1,5 @@
-import { Box, Button, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Box, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
-import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
-import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAccentColor } from "../hooks/useAccentColor";
 import { useThemeMode } from "../themeMode";
@@ -16,7 +14,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const accent = useAccentColor();
-  const { mode: themeMode, toggleMode, designVariant, setDesignVariant } = useThemeMode();
+  const { mode: themeMode, designVariant } = useThemeMode();
   const authMode = location.pathname.includes("register") ? "register" : "login";
   const isDark = themeMode === "dark";
   const isGlass = designVariant === "glass" || designVariant === "blurGlass";
@@ -109,7 +107,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
             }}
           >
             <ToggleButton value="login">Autentificare</ToggleButton>
-            <ToggleButton value="register">Inregistrare</ToggleButton>
+            <ToggleButton value="register">Înregistrare</ToggleButton>
           </ToggleButtonGroup>
 
           <Box sx={{ mb: 2 }}>
@@ -149,51 +147,6 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
           </Box>
         </Paper>
 
-        <Button
-          variant="text"
-          startIcon={isDark ? <LightModeRoundedIcon /> : <DarkModeRoundedIcon />}
-          onClick={toggleMode}
-          sx={{
-            color: isDark ? "#E5E7EB" : "#374151",
-            bgcolor: isGlass ? (isDark ? "rgba(31,41,55,0.62)" : "rgba(255,255,255,0.68)") : isDark ? "rgba(255,255,255,0.06)" : "#FFFFFF",
-            backdropFilter: isBlurGlass ? "blur(8px)" : undefined,
-            border: isGlass ? `1px solid ${accent.value}44` : isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(17,24,39,0.08)",
-            "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.10)" : "#F1F5F9" },
-          }}
-        >
-          {isDark ? "Light mode" : "Dark mode"}
-        </Button>
-
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={designVariant}
-          onChange={(_, value) => {
-            if (value) setDesignVariant(value);
-          }}
-          sx={{
-            bgcolor: isGlass ? (isDark ? "rgba(31,41,55,0.62)" : "rgba(255,255,255,0.68)") : isDark ? "rgba(255,255,255,0.06)" : "#FFFFFF",
-            backdropFilter: isBlurGlass ? "blur(8px)" : undefined,
-            border: isGlass ? `1px solid ${accent.value}44` : isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(17,24,39,0.08)",
-            borderRadius: 2,
-            p: 0.5,
-            "& .MuiToggleButton-root": {
-              border: 0,
-              borderRadius: 1.5,
-              px: 1.5,
-              color: isDark ? "#CBD5E1" : "#4B5563",
-              fontWeight: 800,
-              "&.Mui-selected": {
-                bgcolor: accent.value,
-                color: "#fff",
-              },
-            },
-          }}
-        >
-          <ToggleButton value="standard">Actual</ToggleButton>
-          <ToggleButton value="glass">Glass</ToggleButton>
-          <ToggleButton value="blurGlass">Blur glass</ToggleButton>
-        </ToggleButtonGroup>
       </Stack>
     </Box>
   );

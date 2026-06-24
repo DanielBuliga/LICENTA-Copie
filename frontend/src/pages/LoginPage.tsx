@@ -69,7 +69,7 @@ export function LoginPage() {
           fullWidth
           margin="normal"
           error={email.length > 0 && !emailValid}
-          helperText={email.length > 0 && !emailValid ? "Introdu o adresa de email valida" : ""}
+          helperText={email.length > 0 && !emailValid ? "Introdu o adresă de email validă" : ""}
         />
 
         <TextField
@@ -84,13 +84,13 @@ export function LoginPage() {
         />
 
         <Button type="submit" variant="contained" fullWidth disabled={loading || !emailValid} sx={{ mt: 2 }}>
-          {loading ? "Se autentifica..." : "Autentificare"}
+          {loading ? "Se autentifică..." : "Autentificare"}
         </Button>
 
         <Typography sx={{ mt: 2.5, color: "text.secondary", textAlign: "center" }}>
           Nu ai cont?{" "}
           <Link component={RouterLink} to="/register" sx={{ fontWeight: 800 }}>
-            Creeaza unul
+            Creează unul
           </Link>
         </Typography>
       </Box>

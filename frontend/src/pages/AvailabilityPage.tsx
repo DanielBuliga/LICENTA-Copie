@@ -441,7 +441,7 @@ export function AvailabilityPage() {
                 })}
               </Stack>
 
-              <Stack direction="row" spacing={1} sx={{ mt: 2, flexShrink: 0 }}>
+              <Stack direction="row" spacing={1} sx={{ mt: 2, flexShrink: 0, justifyContent: "flex-end" }}>
                 <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={save} disabled={saving}>
                   {saving ? "Se salvează..." : "Salvează"}
                 </Button>
@@ -543,7 +543,7 @@ export function AvailabilityPage() {
                 ) : null}
               </Stack>
 
-              <Stack direction="row" spacing={1} sx={{ mt: 2, flexShrink: 0 }}>
+              <Stack direction="row" spacing={1} sx={{ mt: 2, flexShrink: 0, justifyContent: "space-between", alignItems: "center" }}>
                 <Button variant="outlined" startIcon={<AddRoundedIcon />} onClick={addOverride}>
                   Adaugă excepție
                 </Button>
