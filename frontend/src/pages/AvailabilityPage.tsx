@@ -5,6 +5,10 @@ import {
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
   IconButton,
   LinearProgress,
@@ -19,6 +23,8 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
 import EventBusyRoundedIcon from "@mui/icons-material/EventBusyRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import dayjs from "dayjs";
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import { AppLayout } from "../components/AppLayout";
@@ -62,6 +68,17 @@ function isValidTime(value: string | null | undefined) {
   return Boolean(value && /^([01]\d|2[0-3]):[0-5]\d$/.test(value));
 }
 
+function localDateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isPastDay(day: string) {
+  return day < localDateInputValue();
+}
+
 export function AvailabilityPage() {
   const { mode } = useThemeMode();
   const { confirm, confirmDialog } = useConfirmDialog();
@@ -72,6 +89,7 @@ export function AvailabilityPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDialog, setErrorDialog] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const windowsByDay = useMemo(() => {
     const map = new Map<number, AvailabilityWindow[]>();
@@ -144,6 +162,12 @@ export function AvailabilityPage() {
     setEnabledDays(Object.fromEntries(weekdays.map((day) => [day.value, day.value <= 4])));
     setSuccess(null);
     setError(null);
+    setErrorDialog(null);
+  }
+
+  function showValidationError(message: string) {
+    setError(message);
+    setErrorDialog(message);
   }
 
   function toggleDay(day: number, checked: boolean) {
@@ -179,10 +203,53 @@ export function AvailabilityPage() {
     return dayWindows.some((window) => window.start_time <= override.start_time! && override.end_time! <= window.end_time);
   }
 
+  function validateOverrides(items: AvailabilityOverride[]) {
+    for (const override of items) {
+      if (!override.day) return "Alege data pentru fiecare excepție.";
+      if (isPastDay(override.day)) return `Excepția din ${override.day} este în trecut. Poți seta excepții doar pentru azi sau pentru zile viitoare.`;
+      if (override.is_unavailable) continue;
+      if (!isValidTime(override.start_time) || !isValidTime(override.end_time)) {
+        return `Excepția din ${override.day} trebuie să folosească ore în format 24h: HH:mm.`;
+      }
+      if (!override.start_time || !override.end_time || override.start_time >= override.end_time) {
+        return `Intervalul excepției din ${override.day} trebuie să aibă ora de început mai mică decât ora de final.`;
+      }
+      if (!isOverrideInsideAvailability(override)) {
+        return `Excepția din ${override.day} trebuie să fie în interiorul unui interval de disponibilitate setat pentru ziua respectivă.`;
+      }
+    }
+    return null;
+  }
+
+  function validateOverrideDuplicates(items: AvailabilityOverride[]) {
+    const byDay = new Map<string, AvailabilityOverride[]>();
+    items.forEach((override) => {
+      byDay.set(override.day, [...(byDay.get(override.day) ?? []), override]);
+    });
+    for (const [day, dayItems] of byDay.entries()) {
+      const unavailableCount = dayItems.filter((override) => override.is_unavailable).length;
+      if (unavailableCount > 1) return `Există deja o excepție de indisponibilitate pentru ${day}.`;
+      if (unavailableCount && dayItems.length > 1) return `Ziua ${day} este marcată indisponibilă, deci nu poate avea și intervale parțiale.`;
+
+      const ranges = dayItems
+        .filter((override) => !override.is_unavailable)
+        .map((override) => ({ start: override.start_time ?? "", end: override.end_time ?? "" }))
+        .sort((a, b) => a.start.localeCompare(b.start));
+      const signatures = new Set(ranges.map((range) => `${range.start}-${range.end}`));
+      if (signatures.size !== ranges.length) return `Există deja o excepție cu același interval pentru ${day}.`;
+      for (let index = 1; index < ranges.length; index += 1) {
+        if (ranges[index].start < ranges[index - 1].end) {
+          return `Excepțiile din ${day} nu se pot suprapune.`;
+        }
+      }
+    }
+    return null;
+  }
+
   async function save() {
     const validationError = validateWindows(windows);
     if (validationError) {
-      setError(validationError);
+      showValidationError(validationError);
       return;
     }
 
@@ -215,7 +282,7 @@ export function AvailabilityPage() {
     setOverrides((current) => [
       ...current,
       {
-        day: new Date().toISOString().slice(0, 10),
+        day: localDateInputValue(),
         is_unavailable: true,
         start_time: "09:00",
         end_time: "17:00",
@@ -242,10 +309,10 @@ export function AvailabilityPage() {
     setError(null);
     setSuccess(null);
 
-    const invalidOverride = overrides.find((override) => !isOverrideInsideAvailability(override));
-    if (invalidOverride) {
+    const validationError = validateOverrides(overrides) || validateOverrideDuplicates(overrides);
+    if (validationError) {
       setSaving(false);
-      setError(`Exceptia din ${invalidOverride.day} trebuie sa fie in interiorul unui interval de disponibilitate setat pentru ziua respectivă.`);
+      showValidationError(validationError);
       return;
     }
 
@@ -275,10 +342,23 @@ export function AvailabilityPage() {
         {loading ? <LinearProgress /> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
         {success ? <Alert severity="success">{success}</Alert> : null}
+        <Dialog open={Boolean(errorDialog)} onClose={() => setErrorDialog(null)} maxWidth="xs" fullWidth>
+          <DialogTitle>Date invalide</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ color: "text.secondary" }}>
+              {errorDialog}
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="contained" onClick={() => setErrorDialog(null)}>
+              OK
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 2.5, alignItems: "start" }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
+          <Card sx={{ height: { md: "calc(100vh - 190px)" }, minHeight: { md: 560 } }}>
+            <CardContent sx={{ p: 3, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 3 }}>
                 <AccessTimeRoundedIcon sx={{ color: "primary.main" }} />
                 <Typography variant="h6">Program săptămânal</Typography>
@@ -290,7 +370,7 @@ export function AvailabilityPage() {
                 </Button>
               </Stack>
 
-              <Stack spacing={1.5}>
+              <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5 }}>
                 {weekdays.map((day) => {
                   const dayWindows = windowsByDay.get(day.value) ?? [];
                   const enabled = Boolean(enabledDays[day.value]);
@@ -361,7 +441,7 @@ export function AvailabilityPage() {
                 })}
               </Stack>
 
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Stack direction="row" spacing={1} sx={{ mt: 2, flexShrink: 0 }}>
                 <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={save} disabled={saving}>
                   {saving ? "Se salvează..." : "Salvează"}
                 </Button>
@@ -369,14 +449,14 @@ export function AvailabilityPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent sx={{ p: 3 }}>
+          <Card sx={{ height: { md: "calc(100vh - 190px)" }, minHeight: { md: 560 } }}>
+            <CardContent sx={{ p: 3, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 3 }}>
                 <EventBusyRoundedIcon sx={{ color: "error.main" }} />
                 <Typography variant="h6">Excepții (Override)</Typography>
               </Stack>
 
-              <Stack spacing={1.5}>
+              <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5 }}>
                 {overrides.map((override, index) => (
                   <Box
                     key={`${override.day}-${index}`}
@@ -394,13 +474,19 @@ export function AvailabilityPage() {
                         spacing={1.5}
                         sx={{ alignItems: { xs: "stretch", lg: "center" }, justifyContent: "space-between" }}
                       >
-                        <TextField
+                        <DatePicker
                           label="Zi"
-                          type="date"
-                          value={override.day}
-                          onChange={(event) => updateOverride(index, { day: event.target.value })}
-                          slotProps={{ inputLabel: { shrink: true } }}
-                          sx={{ minWidth: { lg: 210 } }}
+                          value={override.day ? dayjs(override.day) : null}
+                          onChange={(value) => updateOverride(index, { day: value?.format("YYYY-MM-DD") ?? "" })}
+                          minDate={dayjs(localDateInputValue())}
+                          format="DD.MM.YYYY"
+                          slotProps={{
+                            textField: {
+                              error: Boolean(override.day) && isPastDay(override.day),
+                              helperText: Boolean(override.day) && isPastDay(override.day) ? "Alege o dată de azi sau din viitor." : " ",
+                              sx: { minWidth: { lg: 210 } },
+                            },
+                          }}
                         />
 
                         <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: { xs: "space-between", lg: "flex-end" } }}>
@@ -457,7 +543,7 @@ export function AvailabilityPage() {
                 ) : null}
               </Stack>
 
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Stack direction="row" spacing={1} sx={{ mt: 2, flexShrink: 0 }}>
                 <Button variant="outlined" startIcon={<AddRoundedIcon />} onClick={addOverride}>
                   Adaugă excepție
                 </Button>

@@ -8,6 +8,7 @@ from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
 from app.models.task_dependency import TaskDependency
 from app.models.user import User
+from app.services.availability_impact_service import find_availability_conflict_blocks
 from app.services.eligibility_service import eligible_members_for_task
 from app.services.tasks_service import leaf_tasks, task_path
 from app.utils.time_utils import utc_naive
@@ -127,6 +128,35 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
                 }
             )
 
+    active_members = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == project_id, ProjectMember.status == "ACTIVE")
+        .all()
+    )
+    users_by_id = {
+        user.id: user
+        for user in db.query(User).filter(User.id.in_([member.user_id for member in active_members])).all()
+    } if active_members else {}
+    for member in active_members:
+        for block, task in find_availability_conflict_blocks(db, member.user_id):
+            if task.project_id != project_id:
+                continue
+            user = users_by_id.get(member.user_id)
+            member_name = user.name or user.email if user else f"User #{member.user_id}"
+            problems.append(
+                {
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_path": task_path(db, task),
+                    "type": "AVAILABILITY_CONFLICT",
+                    "reason": (
+                        f"Blocul planificat {block.start_datetime.strftime('%d.%m.%Y %H:%M')} - "
+                        f"{block.end_datetime.strftime('%H:%M')} nu mai este în disponibilitatea lui {member_name}."
+                    ),
+                    "deadline": task.deadline,
+                }
+            )
+
     for dep in deps:
         if dep.successor_task_id in parent_ids:
             continue
@@ -154,10 +184,11 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
     priority = {
         "MISSED_PLANNED_WORK": 0,
         "DEADLINE_PASSED": 1,
-        "INACTIVE_MEMBER": 2,
-        "NO_SKILLS": 3,
-        "BLOCKED": 4,
-        "AT_RISK": 5,
+        "AVAILABILITY_CONFLICT": 2,
+        "INACTIVE_MEMBER": 3,
+        "NO_SKILLS": 4,
+        "BLOCKED": 5,
+        "AT_RISK": 6,
     }
     grouped: dict[int, dict] = {}
     for problem in unique.values():

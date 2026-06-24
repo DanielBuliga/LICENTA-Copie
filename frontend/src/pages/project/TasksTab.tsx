@@ -184,9 +184,10 @@ export function TasksTab({ projectId }: { projectId: number }) {
   const canSubmit = useMemo(() => {
     if (!canManage) return false;
     if (!title.trim()) return false;
-    if (!deadline) return false;
-    if (estimateMinutes <= 0) return false;
-    if (priority < 1 || priority > 5) return false;
+    if (title.trim().length > 200) return false;
+    if (!deadline || !deadline.isValid()) return false;
+    if (!Number.isFinite(estimateMinutes) || !Number.isInteger(estimateMinutes) || estimateMinutes <= 0) return false;
+    if (!Number.isFinite(priority) || priority < 1 || priority > 5) return false;
     return true;
   }, [canManage, title, deadline, estimateMinutes, priority]);
 
@@ -363,12 +364,25 @@ export function TasksTab({ projectId }: { projectId: number }) {
   async function saveTask() {
     if (!canSubmit || !deadline) return;
 
+    const isContainer = Boolean(editingTaskNode?.hasChildren);
+    if (title.trim().length > 200) {
+      setFormError("Titlul taskului poate avea maximum 200 de caractere.");
+      return;
+    }
+    if (!isContainer && !deadline.isAfter(dayjs())) {
+      setFormError("Deadline-ul trebuie să fie în viitor.");
+      return;
+    }
+    if (!Number.isInteger(estimateMinutes) || estimateMinutes <= 0) {
+      setFormError("Estimarea trebuie să fie un număr întreg pozitiv de minute.");
+      return;
+    }
+
     setError(null);
     setFormError(null);
     setSuccess(null);
     setLoading(true);
 
-    const isContainer = Boolean(editingTaskNode?.hasChildren);
     const previousAssignedIds = new Set((editingTask ? assignmentsByTask[editingTask.id] ?? [] : []).map((assignment) => String(assignment.user_id)));
     const desiredAssignedIds = new Set(assignedUserIds);
     const assignmentsChanged =
@@ -887,6 +901,8 @@ export function TasksTab({ projectId }: { projectId: number }) {
               label="Titlu"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              error={title.trim().length > 200}
+              helperText={title.trim().length > 200 ? "Maximum 200 de caractere." : " "}
               fullWidth
               autoFocus
             />
@@ -952,9 +968,16 @@ export function TasksTab({ projectId }: { projectId: number }) {
                 type="number"
                 value={editingTaskNode?.hasChildren ? editingTaskNode.aggregateEstimateMinutes : estimateMinutes}
                 onChange={(e) => setEstimateMinutes(Number(e.target.value))}
-                slotProps={{ htmlInput: { min: 1 } }}
+                error={!editingTaskNode?.hasChildren && (!Number.isInteger(estimateMinutes) || estimateMinutes <= 0)}
+                slotProps={{ htmlInput: { min: 1, step: 1 } }}
                 disabled={Boolean(editingTaskNode?.hasChildren)}
-                helperText={editingTaskNode?.hasChildren ? "Taskurile părinte se estimează automat din subtaskuri." : undefined}
+                helperText={
+                  editingTaskNode?.hasChildren
+                    ? "Taskurile părinte se estimează automat din subtaskuri."
+                    : !Number.isInteger(estimateMinutes) || estimateMinutes <= 0
+                      ? "Introdu un număr întreg pozitiv de minute."
+                      : " "
+                }
                 fullWidth
               />
             </Stack>
@@ -1007,12 +1030,16 @@ export function TasksTab({ projectId }: { projectId: number }) {
               minutesStep={1}
               timeSteps={{ minutes: 1 }}
               format="DD.MM.YYYY HH:mm"
+              minDateTime={dayjs()}
               slotProps={{
                 textField: {
                   fullWidth: true,
+                  error: !editingTaskNode?.hasChildren && Boolean(deadline) && !deadline?.isAfter(dayjs()),
                   helperText: editingTaskNode?.hasChildren
                     ? "Taskurile părinte își iau deadline-ul din cel mai îndepărtat subtask."
-                    : "Poți alege ora din selector sau o poți introduce manual, de exemplu 30.06.2026 18:37.",
+                    : deadline && !deadline.isAfter(dayjs())
+                      ? "Deadline-ul trebuie să fie în viitor."
+                      : "Poți alege ora din selector sau o poți introduce manual, de exemplu 30.06.2026 18:37.",
                 },
               }}
               disabled={Boolean(editingTaskNode?.hasChildren)}

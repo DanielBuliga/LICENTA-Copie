@@ -18,6 +18,7 @@ type ProblemItem = {
 const problemColors: Record<string, "default" | "primary" | "secondary" | "success" | "warning" | "error" | "info"> = {
   MISSED_PLANNED_WORK: "error",
   DEADLINE_PASSED: "error",
+  AVAILABILITY_CONFLICT: "warning",
   INACTIVE_MEMBER: "error",
   AT_RISK: "warning",
   BLOCKED: "secondary",

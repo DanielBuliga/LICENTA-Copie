@@ -41,6 +41,27 @@ from app.utils.time_utils import utc_naive
 router = APIRouter(tags=["tasks"])
 
 
+def _now_utc_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _clean_title(title: str) -> str:
+    cleaned = title.strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Titlul taskului este obligatoriu.")
+    if len(cleaned) > 200:
+        raise HTTPException(status_code=400, detail="Titlul taskului poate avea maximum 200 de caractere.")
+    return cleaned
+
+
+def _validate_future_deadline(deadline: datetime, *, old_deadline: datetime | None = None) -> datetime:
+    deadline_naive = utc_naive(deadline)
+    if old_deadline is None or deadline_naive != old_deadline:
+        if deadline_naive <= _now_utc_naive():
+            raise HTTPException(status_code=400, detail="Deadline-ul trebuie să fie în viitor.")
+    return deadline_naive
+
+
 @router.get("/users/me/tasks", response_model=list[MyTaskPublic])
 def get_my_assigned_tasks(
     db: Session = Depends(get_db),
@@ -102,19 +123,24 @@ def create_task_in_project(
         parent = get_task(db, payload.parent_task_id)
         if not parent or parent.project_id != project_id:
             raise HTTPException(status_code=400, detail="Invalid parent_task_id")
+        if parent.status in {"READY_TO_CLOSE", "CLOSED"}:
+            raise HTTPException(status_code=400, detail="Nu poți adăuga subtaskuri la un task finalizat.")
 
-    if duplicate_task_title_exists(db, project_id, payload.title, payload.parent_task_id):
+    title = _clean_title(payload.title)
+    deadline = _validate_future_deadline(payload.deadline)
+
+    if duplicate_task_title_exists(db, project_id, title, payload.parent_task_id):
         raise HTTPException(status_code=409, detail="Există deja un task cu acest nume în același nivel.")
 
     task = create_task(
         db=db,
         project_id=project_id,
-        title=payload.title,
+        title=title,
         description=payload.description,
         parent_task_id=payload.parent_task_id,
         priority=payload.priority,
         estimate_minutes=payload.estimate_minutes,
-        deadline=utc_naive(payload.deadline),
+        deadline=deadline,
         created_by=current_user.id,
     )
     if task.parent_task_id is not None:
@@ -208,7 +234,7 @@ def update_task_by_id(
     
     # Apply changes (only if provided)
     if payload.title is not None:
-        task.title = payload.title
+        task.title = _clean_title(payload.title)
     if payload.description is not None:
         task.description = payload.description
     if payload.priority is not None:
@@ -216,7 +242,7 @@ def update_task_by_id(
     if payload.estimate_minutes is not None:
         task.estimate_minutes = payload.estimate_minutes
     if payload.deadline is not None:
-        task.deadline = utc_naive(payload.deadline)
+        task.deadline = _validate_future_deadline(payload.deadline, old_deadline=old_deadline)
     if payload.status is not None:
         if payload.status == "CLOSED" and has_subtasks(db, task.id) and not direct_subtasks_closed(db, task.id):
             raise HTTPException(status_code=409, detail="Taskul are subtaskuri nefinalizate")
@@ -232,6 +258,8 @@ def update_task_by_id(
             parent = get_task(db, payload.parent_task_id)
             if not parent or parent.project_id != task.project_id:
                 raise HTTPException(status_code=400, detail="Invalid parent_task_id")
+            if parent.status in {"READY_TO_CLOSE", "CLOSED"}:
+                raise HTTPException(status_code=400, detail="Nu poți muta taskul sub un task finalizat.")
 
             if would_create_parent_cycle(db, task.id, payload.parent_task_id):
                 raise HTTPException(status_code=400, detail="Parent change would create a cycle")

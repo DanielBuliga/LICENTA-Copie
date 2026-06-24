@@ -24,7 +24,7 @@ from app.services.problems_service import compute_problems
 from app.models.scheduled_block import ScheduledBlock
 from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
-from app.utils.time_utils import utc_naive, local_midnight_to_utc
+from app.utils.time_utils import LOCAL_TZ, utc_naive, local_midnight_to_utc
 
 router = APIRouter(prefix="/projects/{project_id}/plan", tags=["plan-generate"])
 
@@ -147,6 +147,8 @@ def generate_plan(
 
     start_day = payload.start_day
     horizon_days = payload.horizon_days
+    if start_day < datetime.now(LOCAL_TZ).date():
+        raise HTTPException(status_code=400, detail="Data de start trebuie să fie azi sau în viitor.")
 
     # Time range for SQL deletes (UTC naive)
     start_dt_aware = local_midnight_to_utc(start_day)  # aware UTC

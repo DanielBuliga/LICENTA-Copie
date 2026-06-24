@@ -324,6 +324,41 @@ def notify_plan_impact(
         )
 
 
+def notify_availability_plan_impact(
+    db: Session,
+    project_id: int,
+    changed_user_id: int,
+    conflict_count: int,
+    conflict_signature: str,
+) -> None:
+    if conflict_count <= 0:
+        return
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    changed_user = db.query(User).filter(User.id == changed_user_id).first()
+    member_name = changed_user.name or changed_user.email if changed_user else "Un membru"
+    block_label = "bloc planificat" if conflict_count == 1 else "blocuri planificate"
+    managers = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == project_id, ProjectMember.role.in_(["OWNER", "ADMIN"]), ProjectMember.status == "ACTIVE")
+        .all()
+    )
+
+    for manager in managers:
+        create_notification(
+            db,
+            user_id=manager.user_id,
+            notification_type="PLAN_IMPACT",
+            title=f"Disponibilitate modificată: {project.title if project else 'proiect'}",
+            body=(
+                f"{member_name} și-a modificat disponibilitatea, iar {conflict_count} {block_label} "
+                "nu mai respectă noul program. Verifică tabul Probleme și rulează Replanificare dacă este necesar."
+            ),
+            project_id=project_id,
+            event_key=f"project:{project_id}:availability-impact:{changed_user_id}:{conflict_signature}",
+        )
+
+
 def notify_member_inactive_replan_needed(db: Session, project_id: int, inactive_user_id: int) -> None:
     project = db.query(Project).filter(Project.id == project_id).first()
     inactive_user = db.query(User).filter(User.id == inactive_user_id).first()

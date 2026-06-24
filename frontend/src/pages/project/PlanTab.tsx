@@ -139,6 +139,15 @@ export function PlanTab({ projectId }: { projectId: number }) {
   }, [blocks]);
 
   async function runPlanner(mode: "generate" | "replan") {
+    if (dayjs(startDay).isBefore(dayjs(), "day")) {
+      setError("Data de start trebuie să fie azi sau în viitor.");
+      return;
+    }
+    if (!Number.isFinite(horizonDays) || horizonDays < 1 || horizonDays > 30) {
+      setError("Orizontul trebuie să fie între 1 și 30 de zile.");
+      return;
+    }
+
     if (mode === "replan") {
       const confirmed = await confirm({
         title: "Replanificare",
@@ -194,13 +203,16 @@ export function PlanTab({ projectId }: { projectId: number }) {
               type="date"
               value={startDay}
               onChange={(event) => setStartDay(event.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
+              error={dayjs(startDay).isBefore(dayjs(), "day")}
+              helperText={dayjs(startDay).isBefore(dayjs(), "day") ? "Alege o dată de azi sau din viitor." : " "}
+              slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: dayjs().format("YYYY-MM-DD") } }}
             />
             <TextField
               label="Orizont zile"
               type="number"
               value={horizonDays}
               onChange={(event) => setHorizonDays(Number(event.target.value))}
+              helperText="Câte zile înainte caută algoritmul sloturi libere."
               slotProps={{ htmlInput: { min: 1, max: 30 } }}
             />
             <Button variant="contained" startIcon={<AutoAwesomeRoundedIcon />} onClick={() => void runPlanner("generate")} disabled={loading}>
