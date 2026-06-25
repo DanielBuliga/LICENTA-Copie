@@ -5,7 +5,8 @@ import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
-import dayjs from "dayjs";
+import dayjs, { Dayjs } from "dayjs";
+import "dayjs/locale/ro";
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
 import { useConfirmDialog } from "../../components/useConfirmDialog";
@@ -48,6 +49,20 @@ type GenerateResponse = {
   assignments_preserved: number;
   at_risk: { task_id: number; reason: string }[];
 };
+
+const RO_WEEKDAYS_SHORT = ["DUM", "LUN", "MAR", "MIE", "JOI", "VIN", "SÂM"];
+
+function capitalizeFirst(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatRoDate(value: Dayjs, format: string) {
+  return capitalizeFirst(value.locale("ro").format(format));
+}
+
+function formatRoWeekdayShort(value: Dayjs) {
+  return RO_WEEKDAYS_SHORT[value.day()];
+}
 
 export function PlanTab({ projectId }: { projectId: number }) {
   const { confirm, confirmDialog } = useConfirmDialog();
@@ -242,7 +257,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
             <Box>
               <Typography sx={{ fontWeight: 950 }}>Calendar săptămânal al proiectului</Typography>
               <Typography sx={{ color: "text.secondary", fontSize: 13 }}>
-                {weekDays[0].format("DD MMM")} - {weekDays[6].format("DD MMM YYYY")}
+                {formatRoDate(weekDays[0], "DD MMM")} - {formatRoDate(weekDays[6], "DD MMM YYYY")}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
@@ -281,7 +296,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
                   }}
                 >
                   <Typography sx={{ color: "text.secondary", fontSize: 12, fontWeight: 900, textTransform: "uppercase" }}>
-                    {day.format("ddd")}
+                    {formatRoWeekdayShort(day)}
                   </Typography>
                   <Typography sx={{ fontWeight: 950, fontSize: 22, color: isToday ? "primary.main" : "text.primary" }}>
                     {day.format("D")}
@@ -332,7 +347,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
           <Card key={day} id={`plan-day-${day}`}>
             <CardContent sx={{ p: 0 }}>
               <Box sx={{ px: 2.5, py: 2, bgcolor: "background.default", borderBottom: "1px solid", borderColor: "divider" }}>
-                <Typography sx={{ fontWeight: 950 }}>{apiDate(`${day}T00:00:00`).format("dddd, DD MMMM YYYY")}</Typography>
+                <Typography sx={{ fontWeight: 950 }}>{formatRoDate(apiDate(`${day}T00:00:00`), "dddd, DD MMMM YYYY")}</Typography>
                 <Typography sx={{ color: "text.secondary", fontSize: 13 }}>{dayBlocks.length} blocuri planificate</Typography>
               </Box>
               <Stack divider={<Divider />}>
@@ -385,4 +400,3 @@ export function PlanTab({ projectId }: { projectId: number }) {
     </Stack>
   );
 }
-

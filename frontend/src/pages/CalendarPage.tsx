@@ -6,6 +6,7 @@ import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import dayjs, { Dayjs } from "dayjs";
+import "dayjs/locale/ro";
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
 import type { ProjectListItem, TaskPublic } from "../api/types";
@@ -23,11 +24,13 @@ type CalendarTaskItem = CalendarBlock & { blockCount: number; totalMinutes: numb
 function monthDays(month: Dayjs) { const start = month.startOf("month").startOf("week").add(1, "day"); return Array.from({ length: 42 }, (_, index) => start.add(index, "day")); }
 function escapeIcs(text: string) { return text.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;"); }
 function formatMinutes(minutes: number) { const h = Math.floor(minutes / 60); const m = minutes % 60; if (!h) return `${m} min`; return m ? `${h}h ${m}m` : `${h}h`; }
+function capitalizeFirst(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
+function formatRoDate(value: Dayjs, format: string) { return capitalizeFirst(value.locale("ro").format(format)); }
 function statusDot(status: string) {
   if (status === "CLOSED") return { color: "#22C55E", label: "Închis" };
   if (status === "READY_TO_CLOSE") return { color: "#0EA5E9", label: "Gata de verificare" };
   if (status === "IN_PROGRESS") return { color: "#3B82F6", label: "În progres" };
-  return { color: "#94A3B8", label: "De făcut" };
+  return null;
 }
 function taskItemsForDay(blocks: CalendarBlock[], day: Dayjs): CalendarTaskItem[] {
   const grouped = new Map<string, CalendarTaskItem>();
@@ -113,7 +116,7 @@ export function CalendarPage() {
         <Stack direction={{ xs: "column", sm: "row" }} sx={{ justifyContent: "space-between", gap: 2 }}>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <Button variant="outlined" onClick={() => setMonth((current) => current.subtract(1, "month"))}><ChevronLeftRoundedIcon /></Button>
-            <Typography variant="h6" sx={{ minWidth: 160, textAlign: "center" }}>{month.format("MMMM YYYY")}</Typography>
+            <Typography variant="h6" sx={{ minWidth: 160, textAlign: "center" }}>{formatRoDate(month, "MMMM YYYY")}</Typography>
             <Button variant="outlined" onClick={() => setMonth((current) => current.add(1, "month"))}><ChevronRightRoundedIcon /></Button>
             <Button variant="outlined" onClick={goToday}>Azi</Button>
             <FormControl size="small" sx={{ minWidth: 220 }}><Select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value as number | "ALL")} sx={{ bgcolor: "background.paper", borderRadius: 2, fontWeight: 800 }}><MenuItem value="ALL">Toate proiectele</MenuItem>{projects.map((project) => <MenuItem key={project.id} value={project.id}>{project.title}</MenuItem>)}</Select></FormControl>
@@ -122,10 +125,10 @@ export function CalendarPage() {
         </Stack>
 
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.6fr 1fr" }, gap: 2 }}>
-          <Card><CardContent sx={{ p: 0 }}><Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid", borderColor: "divider" }}>{["LUN", "MAR", "MIE", "JOI", "VIN", "SAM", "DUM"].map((day) => <Typography key={day} sx={{ p: 2, color: "text.secondary", fontWeight: 900, textAlign: "center" }}>{day}</Typography>)}</Box><Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>{days.map((day) => { const dayTasks = taskItemsForDay(visibleBlocks, day); const selected = day.isSame(selectedDay, "day"); return <Box key={day.toISOString()} onClick={() => setSelectedDay(day)} sx={{ minHeight: 120, p: 1.25, borderRight: "1px solid", borderBottom: "1px solid", borderColor: "divider", cursor: "pointer", bgcolor: selected ? isDark ? "rgba(255,255,255,0.08)" : accent.soft : "transparent", outline: selected ? `2px solid ${accent.value}` : "none", outlineOffset: "-2px" }}><Typography sx={{ fontWeight: 900, color: selected ? isDark ? "#FFFFFF" : accent.text : day.month() === month.month() ? "text.primary" : "text.disabled" }}>{day.date()}</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{dayTasks.slice(0, 3).map((item) => { const color = getProjectColor(item.project_id); return <Chip key={`${item.project_id}-${item.task_id}`} size="small" label={item.taskTitle} sx={{ justifyContent: "flex-start", bgcolor: alpha(color, 0.14), color, border: `1px solid ${alpha(color, 0.22)}`, fontWeight: 850, maxWidth: "100%" }} />; })}{dayTasks.length > 3 ? <Typography sx={{ fontSize: 12, color: "text.secondary" }}>+{dayTasks.length - 3} task-uri</Typography> : null}</Stack></Box>; })}</Box></CardContent></Card>
+          <Card><CardContent sx={{ p: 0 }}><Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid", borderColor: "divider" }}>{["LUN", "MAR", "MIE", "JOI", "VIN", "SÂM", "DUM"].map((day) => <Typography key={day} sx={{ p: 2, color: "text.secondary", fontWeight: 900, textAlign: "center" }}>{day}</Typography>)}</Box><Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>{days.map((day) => { const dayTasks = taskItemsForDay(visibleBlocks, day); const selected = day.isSame(selectedDay, "day"); return <Box key={day.toISOString()} onClick={() => setSelectedDay(day)} sx={{ minHeight: 120, p: 1.25, borderRight: "1px solid", borderBottom: "1px solid", borderColor: "divider", cursor: "pointer", bgcolor: selected ? isDark ? "rgba(255,255,255,0.08)" : accent.soft : "transparent", outline: selected ? `2px solid ${accent.value}` : "none", outlineOffset: "-2px" }}><Typography sx={{ fontWeight: 900, color: selected ? isDark ? "#FFFFFF" : accent.text : day.month() === month.month() ? "text.primary" : "text.disabled" }}>{day.date()}</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{dayTasks.slice(0, 3).map((item) => { const color = getProjectColor(item.project_id); return <Chip key={`${item.project_id}-${item.task_id}`} size="small" label={item.taskTitle} sx={{ justifyContent: "flex-start", bgcolor: alpha(color, 0.14), color, border: `1px solid ${alpha(color, 0.22)}`, fontWeight: 850, maxWidth: "100%" }} />; })}{dayTasks.length > 3 ? <Typography sx={{ fontSize: 12, color: "text.secondary" }}>+{dayTasks.length - 3} task-uri</Typography> : null}</Stack></Box>; })}</Box></CardContent></Card>
           <Card>
             <CardContent sx={{ p: 3, height: { lg: 640 }, display: "flex", flexDirection: "column", minHeight: 0 }}>
-              <Typography variant="h6">{selectedDay.format("dddd, DD MMMM")}</Typography>
+              <Typography variant="h6">{formatRoDate(selectedDay, "dddd, DD MMMM")}</Typography>
               <Typography sx={{ color: "text.secondary", mb: 2 }}>{tasksForSelectedDay.length} task-uri planificate</Typography>
               <Stack spacing={1.5} sx={{ overflowY: "auto", pr: 0.5, flex: 1, minHeight: 0, overscrollBehavior: "contain" }}>
                 {tasksForSelectedDay.map((item) => {
@@ -153,10 +156,12 @@ export function CalendarPage() {
                       <Typography sx={{ mt: 1, color: "text.secondary", fontSize: 14 }}>
                         {formatMinutes(item.totalMinutes)} planificate · {item.blockCount} bloc{item.blockCount === 1 ? "" : "uri"} · {apiDate(item.start_datetime).format("HH:mm")} - {apiDate(item.end_datetime).format("HH:mm")}
                       </Typography>
-                      <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", mt: 1 }}>
-                        <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: status.color }} />
-                        <Typography sx={{ color: "text.secondary", fontSize: 13, fontWeight: 800 }}>{status.label}</Typography>
-                      </Stack>
+                      {status ? (
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", mt: 1 }}>
+                          <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: status.color }} />
+                          <Typography sx={{ color: "text.secondary", fontSize: 13, fontWeight: 800 }}>{status.label}</Typography>
+                        </Stack>
+                      ) : null}
                     </Box>
                   );
                 })}
