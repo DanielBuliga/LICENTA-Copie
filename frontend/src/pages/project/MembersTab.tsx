@@ -83,8 +83,25 @@ function roleMeta(role: MemberItem["role"]) {
   return { label: "MEMBER", color: "#64748B", soft: "#EEF2F7" };
 }
 
+function memberAddErrorMessage(raw: string) {
+  const value = raw.toLowerCase();
+  if (value.includes("not found") || value.includes("does not exist") || value.includes("user not")) return "Nu există un utilizator cu această adresă de email.";
+  if (value.includes("already") || value.includes("exists")) return "Utilizatorul este deja membru în acest proiect.";
+  if (value.includes("valid") || value.includes("email")) return "Introdu o adresă de email validă.";
+  if (value.includes("permission") || value.includes("forbidden") || value.includes("403")) return "Nu ai permisiunea de a adăuga membri în acest proiect.";
+  return raw || "Nu am putut adăuga membrul.";
+}
+
 function estimatedChipWidth(label: string) {
-  return Math.min(170, Math.max(58, label.length * 7 + 34));
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.font = "700 13px Segoe UI, Arial, sans-serif";
+      return Math.min(180, Math.max(50, Math.ceil(context.measureText(label).width) + 28));
+    }
+  }
+  return Math.min(180, Math.max(50, label.length * 6 + 28));
 }
 
 function MemberSkillPreview({
@@ -113,23 +130,35 @@ function MemberSkillPreview({
 
   const visibleCount = useMemo(() => {
     if (!skills.length) return 0;
-    if (!rowWidth) return Math.min(skills.length, 4);
+    if (!rowWidth) return Math.min(skills.length, 8);
 
     const gap = 6;
     const widths = skills.map((skill) => estimatedChipWidth(skill.name));
-    const totalWidth = widths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, widths.length - 1);
-    if (totalWidth <= rowWidth) return skills.length;
 
-    const moreChipWidth = 50;
-    let used = 0;
-    let count = 0;
-    for (const width of widths) {
-      const nextUsed = used + width + (count ? gap : 0);
-      if (nextUsed + gap + moreChipWidth > rowWidth) break;
-      used = nextUsed;
-      count += 1;
+    function fits(count: number, includeMoreChip: boolean) {
+      const items = widths.slice(0, count);
+      if (includeMoreChip) items.push(46);
+      let rows = 1;
+      let used = 0;
+      for (const width of items) {
+        const nextUsed = used ? used + gap + width : width;
+        if (nextUsed <= rowWidth) {
+          used = nextUsed;
+          continue;
+        }
+        rows += 1;
+        used = width;
+        if (rows > 2) return false;
+      }
+      return true;
     }
-    return Math.max(1, count);
+
+    if (fits(skills.length, false)) return skills.length;
+
+    for (let count = skills.length - 1; count >= 1; count -= 1) {
+      if (fits(count, true)) return count;
+    }
+    return 1;
   }, [rowWidth, skills]);
 
   if (!skills.length) {
@@ -140,9 +169,9 @@ function MemberSkillPreview({
   const extraSkillCount = Math.max(0, skills.length - visibleSkills.length);
 
   return (
-    <Box ref={rowRef} sx={{ display: "flex", gap: 0.75, alignItems: "center", overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 }}>
+    <Box ref={rowRef} sx={{ display: "flex", gap: 0.75, rowGap: 0.75, alignItems: "center", overflow: "hidden", flexWrap: "wrap", maxHeight: 56, minWidth: 0 }}>
       {visibleSkills.map((skill) => (
-        <Chip key={skill.id} size="small" label={skill.name} sx={{ fontWeight: 800, flexShrink: 0, maxWidth: 170 }} />
+        <Chip key={skill.id} size="small" label={skill.name} sx={{ fontWeight: 800, flexShrink: 0, maxWidth: 180 }} />
       ))}
       {extraSkillCount > 0 ? (
         <Tooltip title="Vezi toate competențele">
@@ -170,6 +199,7 @@ export function MembersTab({ projectId }: { projectId: number }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<MemberItem["role"]>("MEMBER");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [memberDialogError, setMemberDialogError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -244,18 +274,23 @@ export function MembersTab({ projectId }: { projectId: number }) {
   }, [load]);
 
   async function addMember() {
-    if (!email.trim()) return;
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !cleanEmail.includes("@") || !cleanEmail.includes(".")) {
+      setMemberDialogError("Introdu o adresă de email validă.");
+      return;
+    }
     setLoading(true);
     setMessage(null);
     setError(null);
+    setMemberDialogError(null);
     try {
-      await api.post(`/projects/${projectId}/members`, { email: email.trim(), role });
+      await api.post(`/projects/${projectId}/members`, { email: cleanEmail, role });
       setEmail("");
       setRole("MEMBER");
       setDialogOpen(false);
       await load();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut adăuga membrul"));
+      setMemberDialogError(memberAddErrorMessage(getApiErrorMessage(err, "Nu am putut adăuga membrul.")));
     } finally {
       setLoading(false);
     }
@@ -335,7 +370,14 @@ export function MembersTab({ projectId }: { projectId: number }) {
           {members.filter((member) => member.status === "ACTIVE").length} activi / {members.length} total
         </Typography>
         {isOwner ? (
-          <Button variant="contained" startIcon={<PersonAddRoundedIcon />} onClick={() => setDialogOpen(true)}>
+          <Button
+            variant="contained"
+            startIcon={<PersonAddRoundedIcon />}
+            onClick={() => {
+              setMemberDialogError(null);
+              setDialogOpen(true);
+            }}
+          >
             Adaugă membru
           </Button>
         ) : null}
@@ -495,7 +537,19 @@ export function MembersTab({ projectId }: { projectId: number }) {
         <DialogTitle>Adaugă membru</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Email" placeholder="email@exemplu.com" value={email} onChange={(event) => setEmail(event.target.value)} fullWidth autoFocus />
+            {memberDialogError ? <Alert severity="error">{memberDialogError}</Alert> : null}
+            <TextField
+              label="Email"
+              placeholder="email@exemplu.com"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setMemberDialogError(null);
+              }}
+              error={Boolean(memberDialogError)}
+              fullWidth
+              autoFocus
+            />
             <FormControl fullWidth>
               <InputLabel id="role-label">Rol</InputLabel>
               <Select labelId="role-label" label="Rol" value={role} onChange={(event) => setRole(event.target.value as MemberItem["role"])}>
