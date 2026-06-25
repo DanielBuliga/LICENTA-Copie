@@ -198,7 +198,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
       <Card>
         <CardContent sx={{ p: 3 }}>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Generează plan reconstruiește planul pentru tot intervalul ales. Replanifică repară doar taskurile cu probleme și păstrează blocurile valide deja stabilite.
+            Generează plan reconstruiește tot planul în intervalul ales. Replanifică mută doar taskurile cu probleme și păstrează blocurile valide deja stabilite.
           </Alert>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ alignItems: { xs: "stretch", md: "center" } }}>
             <TextField

@@ -1,11 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Button, Card, CardContent, Checkbox, FormControlLabel, Stack, TextField, Typography } from "@mui/material";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import dayjs from "dayjs";
 import { api } from "../../api/api";
 import { getApiErrorMessage } from "../../api/errors";
 
+type ProjectInfo = { id: number; title: string };
+
+function sanitizeFilePart(text: string) {
+  return text.trim().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "") || "proiect";
+}
+
 export function ExportTab({ projectId }: { projectId: number }) {
+  const [projectTitle, setProjectTitle] = useState(`proiect_${projectId}`);
   const [startDay, setStartDay] = useState(dayjs().format("YYYY-MM-DD"));
   const [days, setDays] = useState(14);
   const [includeCompleted, setIncludeCompleted] = useState(false);
@@ -22,7 +29,7 @@ export function ExportTab({ projectId }: { projectId: number }) {
       const url = URL.createObjectURL(res.data);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `project_${projectId}_plan.ics`;
+      link.download = `${sanitizeFilePart(projectTitle)}_plan_${dayjs().format("YYYYMMDD_HHmm")}.ics`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err: unknown) {
@@ -30,16 +37,22 @@ export function ExportTab({ projectId }: { projectId: number }) {
     }
   }
 
+  useEffect(() => {
+    api.get<ProjectInfo>(`/projects/${projectId}`)
+      .then((res) => setProjectTitle(res.data.title))
+      .catch(() => setProjectTitle(`proiect_${projectId}`));
+  }, [projectId]);
+
   return (
     <Stack spacing={2}>
       {error ? <Alert severity="error">{error}</Alert> : null}
       <Card>
         <CardContent sx={{ p: 3 }}>
           <Typography variant="h6" sx={{ mb: 1 }}>
-            Export calendar
+            Exportă calendarul proiectului
           </Typography>
           <Typography sx={{ color: "text.secondary", mb: 2 }}>
-            Descarca planul in format ICS pentru import in Google Calendar sau alte calendare.
+            Descarcă planul proiectului în format ICS pentru import în Google Calendar sau alte calendare.
           </Typography>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <TextField
@@ -50,7 +63,7 @@ export function ExportTab({ projectId }: { projectId: number }) {
               slotProps={{ inputLabel: { shrink: true } }}
             />
             <TextField
-              label="Numar zile"
+              label="Număr zile"
               type="number"
               value={days}
               onChange={(event) => setDays(Number(event.target.value))}
@@ -62,7 +75,7 @@ export function ExportTab({ projectId }: { projectId: number }) {
               sx={{ alignSelf: "center" }}
             />
             <Button variant="contained" startIcon={<DownloadRoundedIcon />} onClick={downloadIcs}>
-              Descarca ICS
+              Descarcă ICS
             </Button>
           </Stack>
         </CardContent>

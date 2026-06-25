@@ -17,7 +17,7 @@ import { getProjectColor } from "../utils/projectColors";
 
 type CurrentUser = { id: number; email: string; name: string };
 type ScheduledBlock = { id: number; project_id: number; task_id: number; user_id: number; start_datetime: string; end_datetime: string; planned_minutes: number; block_status: string };
-type CalendarBlock = ScheduledBlock & { projectTitle: string; taskTitle: string; taskStatus: string };
+type CalendarBlock = ScheduledBlock & { projectTitle: string; taskTitle: string; taskStatus: string; userLabel: string };
 type CalendarTaskItem = CalendarBlock & { blockCount: number; totalMinutes: number };
 
 function monthDays(month: Dayjs) { const start = month.startOf("month").startOf("week").add(1, "day"); return Array.from({ length: 42 }, (_, index) => start.add(index, "day")); }
@@ -70,6 +70,7 @@ export function CalendarPage() {
     try {
       const [meRes, projectsRes] = await Promise.all([api.get<CurrentUser>("/users/me"), api.get<ProjectListItem[]>("/projects")]);
       const me = meRes.data;
+      const userLabel = me.name || me.email || `User ${me.id}`;
       const projectItems = projectsRes.data;
       setProjects(projectItems);
       const visibleProjects = selectedProjectId === "ALL" ? projectItems : projectItems.filter((project) => project.id === selectedProjectId);
@@ -79,7 +80,7 @@ export function CalendarPage() {
         const taskById = new Map(tasksRes.data.map((task) => [task.id, task]));
         return planRes.data.map((block) => {
           const task = taskById.get(block.task_id);
-          return { ...block, projectTitle: project.title, taskTitle: task?.title ?? `Task #${block.task_id}`, taskStatus: task?.status ?? "UNKNOWN" };
+          return { ...block, projectTitle: project.title, taskTitle: task?.title ?? `Task #${block.task_id}`, taskStatus: task?.status ?? "UNKNOWN", userLabel };
         });
       }));
       setBlocks(blocksByProject.flat());
@@ -96,10 +97,10 @@ export function CalendarPage() {
   function exportIcs() {
     const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Smart Planner//RO", "CALSCALE:GREGORIAN"];
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-    visibleBlocks.filter((block) => !["READY_TO_CLOSE", "CLOSED"].includes(block.taskStatus)).forEach((block) => { lines.push("BEGIN:VEVENT"); lines.push(`UID:block-${block.id}@smart-planner`); lines.push(`DTSTAMP:${stamp}`); lines.push(`DTSTART:${apiDate(block.start_datetime).format("YYYYMMDDTHHmmss")}`); lines.push(`DTEND:${apiDate(block.end_datetime).format("YYYYMMDDTHHmmss")}`); lines.push(`SUMMARY:${escapeIcs(block.taskTitle)}`); lines.push(`DESCRIPTION:${escapeIcs(`${block.projectTitle} · ${block.taskStatus}`)}`); lines.push("END:VEVENT"); });
+    visibleBlocks.filter((block) => !["READY_TO_CLOSE", "CLOSED"].includes(block.taskStatus)).forEach((block) => { lines.push("BEGIN:VEVENT"); lines.push(`UID:block-${block.id}@smart-planner`); lines.push(`DTSTAMP:${stamp}`); lines.push(`DTSTART:${apiDate(block.start_datetime).format("YYYYMMDDTHHmmss")}`); lines.push(`DTEND:${apiDate(block.end_datetime).format("YYYYMMDDTHHmmss")}`); lines.push(`SUMMARY:${escapeIcs(block.taskTitle)}`); lines.push(`DESCRIPTION:${escapeIcs(`Proiect: ${block.projectTitle}\nTask: ${block.taskTitle}\nResponsabil: ${block.userLabel}\nStatus bloc: ${block.block_status}\nStatus task: ${block.taskStatus}`)}`); lines.push("END:VEVENT"); });
     lines.push("END:VCALENDAR");
     const blob = new Blob([`${lines.join("\r\n")}\r\n`], { type: "text/calendar;charset=utf-8" });
-    const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `smart_planner_${month.format("YYYY_MM")}.ics`; link.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `calendar_plan_${dayjs().format("YYYYMMDD_HHmm")}.ics`; link.click(); URL.revokeObjectURL(url);
   }
 
   function goToday() { const today = dayjs(); setMonth(today.startOf("month")); setSelectedDay(today); }
