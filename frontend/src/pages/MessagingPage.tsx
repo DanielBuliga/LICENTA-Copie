@@ -114,7 +114,7 @@ export function MessagingPage() {
     <AppLayout title="Mesagerie">
       <Box sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider", borderRadius: 3, overflow: "hidden", height: { xs: "calc(100vh - 150px)", md: "calc(100vh - 170px)" }, minHeight: 560 }}>
         <Stack direction={{ xs: "column", md: "row" }} sx={{ height: "100%", minHeight: 0 }}>
-          <Box sx={{ width: { xs: "100%", md: 320 }, borderRight: { md: "1px solid" }, borderBottom: { xs: "1px solid", md: 0 }, borderColor: "divider" }}>
+          <Box sx={{ width: { xs: "100%", md: 320 }, minHeight: 0, display: "flex", flexDirection: "column", borderRight: { md: "1px solid" }, borderBottom: { xs: "1px solid", md: 0 }, borderColor: "divider" }}>
             <Box sx={{ p: 2.5 }}>
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "flex-start" }}>
                 <ChatBubbleOutlineRoundedIcon color="primary" sx={{ mt: 0.45 }} />
@@ -126,7 +126,7 @@ export function MessagingPage() {
             </Box>
             <Divider />
             {loading && projects.length === 0 ? <LinearProgress /> : null}
-            <Stack sx={{ p: 1.25, maxHeight: { xs: 220, md: "none" }, flex: { md: 1 }, overflow: "auto" }}>
+            <Stack sx={{ p: 1.25, maxHeight: { xs: 220, md: "none" }, minHeight: 0, flex: { md: 1 }, overflowY: "auto" }}>
               {projects.map((project) => {
                 const selected = project.id === selectedProjectId;
                 return (

@@ -453,7 +453,7 @@ export function AvailabilityPage() {
             <CardContent sx={{ p: 3, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 3 }}>
                 <EventBusyRoundedIcon sx={{ color: "error.main" }} />
-                <Typography variant="h6">Excepții (Override)</Typography>
+                <Typography variant="h6">Excepții</Typography>
               </Stack>
 
               <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5 }}>

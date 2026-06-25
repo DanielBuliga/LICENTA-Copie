@@ -69,7 +69,7 @@ const navItems = [
   { label: "Calendar", path: "/calendar", icon: <CalendarMonthRoundedIcon /> },
   { label: "Disponibilitate", path: "/availability", icon: <EventAvailableRoundedIcon /> },
   { label: "Competențe", path: "/skills", icon: <PsychologyRoundedIcon /> },
-  { label: "Mesaje", path: "/messages", icon: <MailOutlineRoundedIcon /> },
+  { label: "Mesagerie", path: "/messages", icon: <MailOutlineRoundedIcon /> },
 ];
 
 let cachedUserToken: string | null = null;
