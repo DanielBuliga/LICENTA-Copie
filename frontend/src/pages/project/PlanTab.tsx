@@ -276,7 +276,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
           <Box
             sx={{
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(7, 1fr)" },
+              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(7, minmax(0, 1fr))" },
             }}
           >
             {weekDays.map((day) => {
@@ -288,6 +288,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
                   key={key}
                   sx={{
                     minHeight: 150,
+                    minWidth: 0,
                     p: 1.5,
                     borderRight: { lg: "1px solid" },
                     borderBottom: "1px solid",
@@ -313,9 +314,10 @@ export function PlanTab({ projectId }: { projectId: number }) {
                             bgcolor: "primary.lighter",
                             border: "1px solid",
                             borderColor: "primary.light",
+                            minWidth: 0,
                           }}
                         >
-                          <Typography noWrap sx={{ fontWeight: 900, fontSize: 13 }}>{task?.title ?? `Task #${block.task_id}`}</Typography>
+                          <Typography noWrap title={task?.title ?? `Task #${block.task_id}`} sx={{ fontWeight: 900, fontSize: 13, minWidth: 0 }}>{task?.title ?? `Task #${block.task_id}`}</Typography>
                           <Typography sx={{ color: "text.secondary", fontSize: 12 }}>
                             {apiDate(block.start_datetime).format("HH:mm")} - {apiDate(block.end_datetime).format("HH:mm")}
                           </Typography>

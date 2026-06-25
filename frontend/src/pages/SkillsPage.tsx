@@ -323,7 +323,7 @@ export function SkillsPage() {
                 </Stack>
               </Stack>
 
-              <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start", mb: 2 }}>
                 <TextField
                   label="Nume skill nou"
                   value={newSkillName}
@@ -338,7 +338,7 @@ export function SkillsPage() {
                   startIcon={<AddRoundedIcon />}
                   onClick={createSkill}
                   disabled={!newSkillName.trim() || Boolean(newSkillError) || saving}
-                  sx={{ minWidth: 82 }}
+                  sx={{ minWidth: 116, height: 56, flex: "0 0 auto" }}
                 >
                   Adaugă
                 </Button>
@@ -393,7 +393,7 @@ export function SkillsPage() {
                       ) : null}
                     </Stack>
 
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { xs: "stretch", sm: "center" } }}>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
                       <TextField
                         size="small"
                         label="Alias"
@@ -402,13 +402,14 @@ export function SkillsPage() {
                         error={Boolean(currentAliasError)}
                         helperText={currentAliasError || " "}
                         slotProps={{ htmlInput: { maxLength: MAX_ALIAS_LENGTH } }}
-                        sx={{ flex: 1 }}
+                        sx={{ flex: 1, minWidth: 0 }}
                       />
                       <Button
                         size="small"
                         variant="outlined"
                         onClick={() => void addAlias(skill.id)}
                         disabled={!(newAliasBySkill[skill.id] ?? "").trim() || Boolean(currentAliasError) || saving}
+                        sx={{ height: 40, minWidth: 84, flex: "0 0 auto" }}
                       >
                         Adaugă
                       </Button>

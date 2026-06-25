@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 import unicodedata
+from zipfile import BadZipFile
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from app.services.skills_service import list_skills
 TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".xml", ".html", ".css", ".js", ".ts", ".tsx", ".py", ".java", ".sql"}
 DOCUMENT_UPLOAD_DIR = Path(UPLOAD_DIR) / "documents"
 MIN_CONFIDENCE = 0.7
+MAX_DOCUMENT_CHARS = 20_000
 
 STOPWORDS = {
     "task",
@@ -93,12 +95,59 @@ def stored_document_path(document_id: int) -> Path | None:
 def read_document_text(document: ProjectDocument) -> str:
     pieces = [document.file_name, document.description or ""]
     path = stored_document_path(document.id)
-    if path and path.suffix.lower() in TEXT_EXTENSIONS and path.exists():
-        try:
-            pieces.append(path.read_text(encoding="utf-8", errors="ignore")[:20_000])
-        except OSError:
-            pass
+    if path and path.exists():
+        extracted = extract_file_text(path)
+        if extracted:
+            pieces.append(extracted[:MAX_DOCUMENT_CHARS])
     return "\n".join(piece for piece in pieces if piece)
+
+
+def extract_file_text(path: Path) -> str:
+    suffix = path.suffix.lower()
+    try:
+        if suffix in TEXT_EXTENSIONS:
+            return path.read_text(encoding="utf-8", errors="ignore")
+        if suffix == ".pdf":
+            return extract_pdf_text(path)
+        if suffix == ".docx":
+            return extract_docx_text(path)
+    except OSError:
+        return ""
+    return ""
+
+
+def extract_pdf_text(path: Path) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return ""
+
+    try:
+        reader = PdfReader(str(path))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        return ""
+
+
+def extract_docx_text(path: Path) -> str:
+    try:
+        from docx import Document
+    except ImportError:
+        return ""
+
+    try:
+        document = Document(str(path))
+    except (BadZipFile, OSError, ValueError):
+        return ""
+
+    paragraphs = [paragraph.text for paragraph in document.paragraphs]
+    table_cells = [
+        cell.text
+        for table in document.tables
+        for row in table.rows
+        for cell in row.cells
+    ]
+    return "\n".join([*paragraphs, *table_cells])
 
 
 def build_task_corpus(db: Session, task: Task) -> tuple[str, int]:

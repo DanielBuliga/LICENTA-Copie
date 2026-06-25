@@ -41,6 +41,7 @@ const eventLabels: Record<string, string> = {
   TASK_READY_TO_CLOSE: "Verificare",
   TASK_CLOSED: "Finalizare",
   PLAN_GENERATED: "Plan",
+  AVAILABILITY_PLAN_IMPACT: "Disponibilitate",
 };
 
 const eventColors: Record<string, "default" | "primary" | "secondary" | "success" | "warning" | "error" | "info"> = {
@@ -59,6 +60,7 @@ const eventColors: Record<string, "default" | "primary" | "secondary" | "success
   TASK_READY_TO_CLOSE: "info",
   TASK_CLOSED: "success",
   PLAN_GENERATED: "primary",
+  AVAILABILITY_PLAN_IMPACT: "warning",
 };
 
 const changeChipMeta: Record<string, { label: string; color: "default" | "primary" | "secondary" | "success" | "warning" | "error" | "info" }> = {

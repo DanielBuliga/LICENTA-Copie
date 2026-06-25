@@ -46,6 +46,8 @@ type NotificationPreferences = {
   email_enabled: boolean;
   deadline_reminders_enabled: boolean;
   deadline_reminder_hours: number[];
+  scheduled_block_reminders_enabled: boolean;
+  scheduled_block_reminder_minutes: number[];
   project_events_enabled: boolean;
   assignment_events_enabled: boolean;
   message_events_enabled: boolean;
@@ -92,7 +94,9 @@ export function AccountPage() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [newReminderHour, setNewReminderHour] = useState("");
+  const [newPlanReminderMinute, setNewPlanReminderMinute] = useState("");
   const [reminderError, setReminderError] = useState<string | null>(null);
+  const [planReminderError, setPlanReminderError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -100,6 +104,10 @@ export function AccountPage() {
   const reminderHours = useMemo(
     () => [...(prefs?.deadline_reminder_hours ?? [])].sort((a, b) => b - a),
     [prefs?.deadline_reminder_hours]
+  );
+  const planReminderMinutes = useMemo(
+    () => [...(prefs?.scheduled_block_reminder_minutes ?? [])].sort((a, b) => b - a),
+    [prefs?.scheduled_block_reminder_minutes]
   );
 
   const load = useCallback(async () => {
@@ -180,6 +188,11 @@ export function AccountPage() {
     setNewReminderHour(value.replace(/\D/g, ""));
   }
 
+  function updatePlanReminderInput(value: string) {
+    setPlanReminderError(null);
+    setNewPlanReminderMinute(value.replace(/\D/g, ""));
+  }
+
   function addReminderHour() {
     const value = Number(newReminderHour);
     if (!newReminderHour || !Number.isInteger(value) || value <= 0 || value > 720) {
@@ -200,6 +213,34 @@ export function AccountPage() {
   function removeReminderHour(value: number) {
     setReminderError(null);
     void updatePrefs({ deadline_reminder_hours: reminderHours.filter((hour) => hour !== value) });
+  }
+
+  function addPlanReminderMinute() {
+    const value = Number(newPlanReminderMinute);
+    if (!newPlanReminderMinute || !Number.isInteger(value) || value <= 0 || value > 1440) {
+      setPlanReminderError("Introdu un număr întreg între 1 și 1440.");
+      return;
+    }
+    if (planReminderMinutes.includes(value)) {
+      setPlanReminderError("Intervalul există deja.");
+      return;
+    }
+
+    const next = [...planReminderMinutes, value].sort((a, b) => b - a);
+    setNewPlanReminderMinute("");
+    setPlanReminderError(null);
+    void updatePrefs({ scheduled_block_reminder_minutes: next });
+  }
+
+  function removePlanReminderMinute(value: number) {
+    setPlanReminderError(null);
+    void updatePrefs({ scheduled_block_reminder_minutes: planReminderMinutes.filter((minute) => minute !== value) });
+  }
+
+  function formatPlanReminderLabel(minutes: number) {
+    if (minutes < 60) return `${minutes} min`;
+    if (minutes % 60 === 0) return `${minutes / 60}h`;
+    return `${minutes} min`;
   }
 
   const displayName = user?.name?.trim() || user?.email || "Cont conectat";
@@ -279,6 +320,7 @@ export function AccountPage() {
                   <SettingSwitch label="Task gata de verificare" checked={prefs.ready_to_close_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ ready_to_close_enabled: checked })} />
                   <SettingSwitch label="Proiect finalizat" checked={prefs.project_completed_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ project_completed_enabled: checked })} />
                   <SettingSwitch label="Reminder-e deadline" checked={prefs.deadline_reminders_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ deadline_reminders_enabled: checked })} />
+                  <SettingSwitch label="Reminder-e plan" checked={prefs.scheduled_block_reminders_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ scheduled_block_reminders_enabled: checked })} />
                 </Box>
 
                 <Box sx={{ p: 2, borderRadius: 2, bgcolor: "background.default", border: "1px solid", borderColor: "divider" }}>
@@ -325,6 +367,55 @@ export function AccountPage() {
                       />
                     ))}
                     {reminderHours.length === 0 ? (
+                      <Typography sx={{ color: "text.secondary", fontSize: 13 }}>Nu există intervale configurate.</Typography>
+                    ) : null}
+                  </Stack>
+                </Box>
+
+                <Box sx={{ p: 2, borderRadius: 2, bgcolor: "background.default", border: "1px solid", borderColor: "divider" }}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "flex-start" } }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 950 }}>Intervale plan</Typography>
+                      <Typography sx={{ color: "text.secondary", fontSize: 13 }}>Minute înainte de blocul planificat.</Typography>
+                    </Box>
+                    <Stack spacing={1} sx={{ minWidth: { xs: "100%", sm: 300 } }}>
+                      <Stack direction="row" spacing={1}>
+                        <TextField
+                          label="Minute"
+                          value={newPlanReminderMinute}
+                          onChange={(event) => updatePlanReminderInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (["e", "E", "+", "-", ".", ",", " "].includes(event.key)) event.preventDefault();
+                            if (event.key === "Enter") addPlanReminderMinute();
+                          }}
+                          slotProps={{ htmlInput: { inputMode: "numeric", pattern: "[0-9]*" } }}
+                          size="small"
+                          fullWidth
+                          error={Boolean(planReminderError)}
+                        />
+                        <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={addPlanReminderMinute} disabled={loading || !newPlanReminderMinute.trim()} sx={{ minWidth: 112 }}>
+                          Adaugă
+                        </Button>
+                      </Stack>
+                      {planReminderError ? (
+                        <Alert severity="warning" sx={{ py: 0.5, alignItems: "center" }}>
+                          {planReminderError}
+                        </Alert>
+                      ) : null}
+                    </Stack>
+                  </Stack>
+
+                  <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: "wrap", rowGap: 1 }}>
+                    {planReminderMinutes.map((minute) => (
+                      <Chip
+                        key={minute}
+                        label={formatPlanReminderLabel(minute)}
+                        onDelete={() => removePlanReminderMinute(minute)}
+                        deleteIcon={<CloseRoundedIcon />}
+                        sx={{ bgcolor: accent.soft, color: accent.text, fontWeight: 900 }}
+                      />
+                    ))}
+                    {planReminderMinutes.length === 0 ? (
                       <Typography sx={{ color: "text.secondary", fontSize: 13 }}>Nu există intervale configurate.</Typography>
                     ) : null}
                   </Stack>

@@ -32,6 +32,8 @@ class NotificationPreference(Base):
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deadline_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     deadline_reminder_hours: Mapped[str] = mapped_column(String(100), default="24,6,1", nullable=False)
+    scheduled_block_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    scheduled_block_reminder_minutes: Mapped[str] = mapped_column(String(100), default="60,15", nullable=False)
     project_events_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     assignment_events_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     message_events_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

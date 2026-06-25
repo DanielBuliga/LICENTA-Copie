@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.notification import Notification, NotificationDeliveryLog, NotificationPreference
 from app.models.project import Project
 from app.models.project_member import ProjectMember
+from app.models.scheduled_block import ScheduledBlock
 from app.models.task import Task
 from app.models.task_assignment import TaskAssignment
 from app.models.user import User
@@ -30,6 +31,25 @@ def parse_hours(value: str) -> list[int]:
 
 def format_hours(hours: list[int]) -> str:
     return ",".join(str(hour) for hour in sorted(set(hours), reverse=True))
+
+
+def parse_minutes(value: str) -> list[int]:
+    minutes: list[int] = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            minute = int(item)
+        except ValueError:
+            continue
+        if 1 <= minute <= 24 * 60:
+            minutes.append(minute)
+    return sorted(set(minutes), reverse=True) or [60, 15]
+
+
+def format_minutes(minutes: list[int]) -> str:
+    return ",".join(str(minute) for minute in sorted(set(minutes), reverse=True))
 
 
 def get_or_create_preferences(db: Session, user_id: int) -> NotificationPreference:
@@ -56,6 +76,8 @@ def should_send_for_type(prefs: NotificationPreference, notification_type: str) 
         return prefs.project_completed_enabled
     if notification_type == "DEADLINE_REMINDER":
         return prefs.deadline_reminders_enabled
+    if notification_type == "SCHEDULED_BLOCK_REMINDER":
+        return prefs.scheduled_block_reminders_enabled
     return True
 
 
@@ -359,6 +381,57 @@ def notify_availability_plan_impact(
         )
 
 
+def notify_availability_replan_opportunity(
+    db: Session,
+    changed_user_id: int,
+    change_signature: str,
+) -> None:
+    changed_user = db.query(User).filter(User.id == changed_user_id).first()
+    member_name = changed_user.name or changed_user.email if changed_user else "Un membru"
+    memberships = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.user_id == changed_user_id, ProjectMember.status == "ACTIVE")
+        .all()
+    )
+
+    for membership in memberships:
+        active_task_count = (
+            db.query(Task)
+            .filter(
+                Task.project_id == membership.project_id,
+                Task.status.notin_(["CLOSED", "READY_TO_CLOSE"]),
+            )
+            .count()
+        )
+        if active_task_count <= 0:
+            continue
+
+        project = db.query(Project).filter(Project.id == membership.project_id).first()
+        managers = (
+            db.query(ProjectMember)
+            .filter(
+                ProjectMember.project_id == membership.project_id,
+                ProjectMember.role.in_(["OWNER", "ADMIN"]),
+                ProjectMember.status == "ACTIVE",
+            )
+            .all()
+        )
+
+        for manager in managers:
+            create_notification(
+                db,
+                user_id=manager.user_id,
+                notification_type="PLAN_IMPACT",
+                title=f"Disponibilitate actualizată: {project.title if project else 'proiect'}",
+                body=(
+                    f"{member_name} și-a modificat disponibilitatea. Nu există conflicte directe cu blocurile planificate, "
+                    "dar planul poate fi regenerat sau replanificat pentru a folosi noul program disponibil."
+                ),
+                project_id=membership.project_id,
+                event_key=f"project:{membership.project_id}:availability-opportunity:{changed_user_id}:{change_signature}:{manager.user_id}",
+            )
+
+
 def notify_member_inactive_replan_needed(db: Session, project_id: int, inactive_user_id: int) -> None:
     project = db.query(Project).filter(Project.id == project_id).first()
     inactive_user = db.query(User).filter(User.id == inactive_user_id).first()
@@ -452,7 +525,7 @@ def send_deadline_reminders(db: Session) -> int:
         .join(Task, Task.id == TaskAssignment.task_id)
         .join(Project, Project.id == Task.project_id)
         .join(ProjectMember, (ProjectMember.project_id == Task.project_id) & (ProjectMember.user_id == TaskAssignment.user_id))
-        .filter(TaskAssignment.member_status != "DONE", Task.status != "CLOSED", Task.deadline > now)
+        .filter(TaskAssignment.member_status != "DONE", Task.status.notin_(["READY_TO_CLOSE", "CLOSED"]), Task.deadline > now)
         .filter(ProjectMember.status == "ACTIVE")
         .all()
     )
@@ -479,6 +552,69 @@ def send_deadline_reminders(db: Session) -> int:
             project_id=task.project_id,
             task_id=task.id,
             event_key=f"task:{task.id}:deadline:{task.deadline.isoformat()}:{hours}h:{assignment.user_id}",
+            email=True,
+        )
+        if created:
+            count += 1
+    return count
+
+
+def send_scheduled_block_reminders(db: Session) -> int:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    horizon = now + timedelta(hours=24)
+    rows = (
+        db.query(ScheduledBlock, TaskAssignment, Task, Project)
+        .join(Task, Task.id == ScheduledBlock.task_id)
+        .join(Project, Project.id == ScheduledBlock.project_id)
+        .join(
+            TaskAssignment,
+            (TaskAssignment.task_id == ScheduledBlock.task_id)
+            & (TaskAssignment.user_id == ScheduledBlock.user_id),
+        )
+        .join(
+            ProjectMember,
+            (ProjectMember.project_id == ScheduledBlock.project_id)
+            & (ProjectMember.user_id == ScheduledBlock.user_id),
+        )
+        .filter(
+            ScheduledBlock.block_status == "PLANNED",
+            ScheduledBlock.start_datetime > now,
+            ScheduledBlock.start_datetime <= horizon,
+            TaskAssignment.member_status != "DONE",
+            Task.status.notin_(["READY_TO_CLOSE", "CLOSED"]),
+            ProjectMember.status == "ACTIVE",
+        )
+        .all()
+    )
+
+    count = 0
+    for block, assignment, task, project in rows:
+        prefs = get_or_create_preferences(db, assignment.user_id)
+        if not prefs.scheduled_block_reminders_enabled:
+            continue
+
+        due_minutes = [
+            minutes
+            for minutes in parse_minutes(prefs.scheduled_block_reminder_minutes)
+            if block.start_datetime - timedelta(minutes=minutes) <= now < block.start_datetime
+        ]
+        if not due_minutes:
+            continue
+
+        minutes = min(due_minutes)
+        label = f"{minutes} min" if minutes < 60 else f"{minutes // 60}h" if minutes % 60 == 0 else f"{minutes} min"
+        created = create_notification(
+            db,
+            user_id=assignment.user_id,
+            notification_type="SCHEDULED_BLOCK_REMINDER",
+            title=f"Task planificat în {label}: {task.title}",
+            body=(
+                f"Taskul {task.title} din proiectul {project.title} este planificat "
+                f"între {block.start_datetime} și {block.end_datetime}."
+            ),
+            project_id=task.project_id,
+            task_id=task.id,
+            event_key=f"block:{block.id}:schedule:{block.start_datetime.isoformat()}:{minutes}min:{assignment.user_id}",
             email=True,
         )
         if created:

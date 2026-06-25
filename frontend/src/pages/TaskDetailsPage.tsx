@@ -22,6 +22,7 @@ type TaskPublic = { id: number; project_id: number; parent_task_id: number | nul
 type ProjectPublic = { id: number; title: string };
 type CurrentUser = { id: number; email: string; name?: string | null };
 type ProjectMember = { user_id: number; role: "OWNER" | "ADMIN" | "MEMBER"; status?: "ACTIVE" | "INACTIVE" };
+type TaskSkillRequirement = { skill_id: number; name: string };
 
 function formatMinutes(minutes: number) {
   if (minutes < 60) return `${minutes} min`;
@@ -37,6 +38,7 @@ export function TaskDetailsPage() {
   const taskId = Number(params.taskId);
   const [task, setTask] = useState<MyTask | null>(null);
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
+  const [requiredSkills, setRequiredSkills] = useState<TaskSkillRequirement[]>([]);
   const [myRole, setMyRole] = useState<ProjectMember["role"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,16 +71,19 @@ export function TaskDetailsPage() {
 
       setTask(found);
       if (found) {
-        const [docs, meRes, membersRes] = await Promise.all([
+        const [docs, skillsRes, meRes, membersRes] = await Promise.all([
           api.get<ProjectDocument[]>(`/projects/${found.project_id}/documents`, { params: { task_id: found.id } }),
+          api.get<TaskSkillRequirement[]>(`/tasks/${found.id}/skills`),
           api.get<CurrentUser>("/users/me"),
           api.get<ProjectMember[]>(`/projects/${found.project_id}/members`),
         ]);
         setDocuments(docs.data);
+        setRequiredSkills(skillsRes.data);
         const member = membersRes.data.find((item) => item.user_id === meRes.data.id);
         setMyRole(member?.role ?? null);
       } else {
         setDocuments([]);
+        setRequiredSkills([]);
         setMyRole(null);
       }
     } catch (err: unknown) {
@@ -179,6 +184,20 @@ export function TaskDetailsPage() {
 
             <Card>
               <CardContent sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 1.5 }}>Competențe necesare</Typography>
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+                  {requiredSkills.map((skill) => (
+                    <Chip key={skill.skill_id} label={skill.name} sx={{ fontWeight: 850 }} />
+                  ))}
+                  {requiredSkills.length === 0 ? (
+                    <Typography sx={{ color: "text.secondary" }}>Nu există competențe setate pentru acest task.</Typography>
+                  ) : null}
+                </Stack>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent sx={{ p: 3 }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}><DescriptionOutlinedIcon color="primary" /><Typography variant="h6">Descriere</Typography></Stack>
                 <Typography sx={{ color: task.description ? "text.primary" : "text.secondary", whiteSpace: "pre-wrap" }}>{task.description?.trim() || "Nu există descriere pentru acest task."}</Typography>
               </CardContent>
@@ -186,7 +205,7 @@ export function TaskDetailsPage() {
 
             <Card>
               <CardContent sx={{ p: 3 }}>
-                <Typography variant="h6" sx={{ mb: 1.5 }}>Documente atasate</Typography>
+                <Typography variant="h6" sx={{ mb: 1.5 }}>Documente atașate</Typography>
                 <Stack spacing={1}>
                   {documents.map((doc) => (
                     <Stack key={doc.id} direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { xs: "flex-start", sm: "center" }, p: 1.5, border: "1px solid", borderColor: "divider", borderRadius: 2 }}>

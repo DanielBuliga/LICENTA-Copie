@@ -17,6 +17,7 @@ import {
   InputLabel,
   ListItemIcon,
   ListItemText,
+  ListSubheader,
   Menu,
   MenuItem,
   Select,
@@ -31,6 +32,7 @@ import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
 import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import ChecklistRoundedIcon from "@mui/icons-material/ChecklistRounded";
 import MoreVertRoundedIcon from "@mui/icons-material/MoreVertRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
@@ -110,6 +112,16 @@ type SkillExtractionResponse = {
   }[];
 };
 
+type TaskSkillRequirement = {
+  skill_id: number;
+  name: string;
+};
+
+type SkillItem = {
+  id: number;
+  name: string;
+};
+
 function formatMinutes(m: number) {
   if (m < 60) return `${m} min`;
   const h = Math.floor(m / 60);
@@ -151,11 +163,15 @@ export function TasksTab({ projectId }: { projectId: number }) {
   const { confirm, confirmDialog } = useConfirmDialog();
   const [items, setItems] = useState<TaskPublic[]>([]);
   const [assignmentsByTask, setAssignmentsByTask] = useState<Record<number, AssignmentItem[]>>({});
+  const [skillsByTask, setSkillsByTask] = useState<Record<number, TaskSkillRequirement[]>>({});
+  const [skillbook, setSkillbook] = useState<SkillItem[]>([]);
   const [membersById, setMembersById] = useState<Record<number, MemberItem>>({});
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [skillExtractionSuccess, setSkillExtractionSuccess] = useState<string | null>(null);
+  const [skillExtractionNotice, setSkillExtractionNotice] = useState<string | null>(null);
   const [planImpactMessage, setPlanImpactMessage] = useState<string | null>(null);
   const [extractingTaskId, setExtractingTaskId] = useState<number | null>(null);
   const [actionsAnchor, setActionsAnchor] = useState<HTMLElement | null>(null);
@@ -169,6 +185,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
   const [openDialog, setOpenDialog] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskPublic | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [skillsDialogTask, setSkillsDialogTask] = useState<TaskPublic | null>(null);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [skillSearch, setSkillSearch] = useState("");
 
   // Form state (in dialog)
   const [title, setTitle] = useState("");
@@ -256,6 +275,12 @@ export function TasksTab({ projectId }: { projectId: number }) {
     return visible;
   }, [expandedTaskIds, taskTree]);
 
+  const filteredSkillbook = useMemo(() => {
+    const query = skillSearch.trim().toLowerCase();
+    if (!query) return skillbook;
+    return skillbook.filter((skill) => skill.name.toLowerCase().includes(query));
+  }, [skillSearch, skillbook]);
+
   function resetForm() {
     setEditingTask(null);
     setFormError(null);
@@ -281,6 +306,14 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setDeadline(apiDate(task.deadline));
     setAssignedUserIds((assignmentsByTask[task.id] ?? []).map((assignment) => String(assignment.user_id)));
     setOpenDialog(true);
+  }
+
+  function openSkillsDialog(task: TaskPublic) {
+    setActionsAnchor(null);
+    setActionsTask(null);
+    setSkillsDialogTask(task);
+    setSelectedSkillIds((skillsByTask[task.id] ?? []).map((skill) => String(skill.skill_id)));
+    setSkillSearch("");
   }
 
   function openActions(event: React.MouseEvent<HTMLElement>, task: TaskPublic) {
@@ -326,15 +359,26 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setError(null);
     setLoading(true);
     try {
-      const res = await api.get<TaskPublic[]>(`/projects/${projectId}/tasks`);
+      const [res, skillsCatalogRes] = await Promise.all([
+        api.get<TaskPublic[]>(`/projects/${projectId}/tasks`),
+        api.get<SkillItem[]>("/skills"),
+      ]);
       setItems(res.data);
+      setSkillbook(skillsCatalogRes.data);
       const assignmentPairs = await Promise.all(
         res.data.map(async (task) => {
           const assignmentRes = await api.get<AssignmentItem[]>(`/tasks/${task.id}/assignments`);
           return [task.id, assignmentRes.data] as const;
         })
       );
+      const skillPairs = await Promise.all(
+        res.data.map(async (task) => {
+          const skillsRes = await api.get<TaskSkillRequirement[]>(`/tasks/${task.id}/skills`);
+          return [task.id, skillsRes.data] as const;
+        })
+      );
       setAssignmentsByTask(Object.fromEntries(assignmentPairs));
+      setSkillsByTask(Object.fromEntries(skillPairs));
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca task-urile"));
     } finally {
@@ -359,6 +403,26 @@ export function TasksTab({ projectId }: { projectId: number }) {
         .filter((userId) => !current.has(userId))
         .map((userId) => api.post(`/tasks/${taskId}/assignments`, { user_id: userId, assigned_minutes: null })),
     ]);
+  }
+
+  async function saveTaskSkills() {
+    if (!skillsDialogTask) return;
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await api.put(`/tasks/${skillsDialogTask.id}/skills`, {
+        skills: selectedSkillIds.map((skillId) => ({ skill_id: Number(skillId) })),
+      });
+      setSkillsDialogTask(null);
+      setSelectedSkillIds([]);
+      await loadTasks();
+      setSuccess("Competențele taskului au fost actualizate.");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Nu am putut actualiza competențele taskului"));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function saveTask() {
@@ -489,11 +553,14 @@ export function TasksTab({ projectId }: { projectId: number }) {
         const matchedTerm = skill.matched_term ? `, termen: ${skill.matched_term}` : "";
         return `${skill.name} (${confidence}%${matchedTerm})`;
       });
-      setSuccess(
-        names.length
-          ? `Skilluri extrase. Potrivirile foarte sigure au fost aplicate automat: ${names.join(", ")}. Documente analizate: ${res.data.document_count}.`
-          : `Nu am gasit skill-uri existente in descriere/documentele taskului. Documente analizate: ${res.data.document_count}.`
-      );
+      if (names.length) {
+        setSkillExtractionSuccess(`Competențe extrase. Potrivirile foarte sigure au fost aplicate automat: ${names.join(", ")}. Documente analizate: ${res.data.document_count}.`);
+      } else {
+        setSkillExtractionNotice(
+          `Nu au fost găsite competențe existente în descrierea sau documentele taskului. Documente analizate: ${res.data.document_count}. Poți adăuga manual competențele necesare din meniul taskului, folosind opțiunea „Editează competențe”.`
+        );
+      }
+      await loadTasks();
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut extrage skill-urile pentru task"));
     } finally {
@@ -582,6 +649,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           const priority = priorityMeta(t.priority);
           const parentTask = t.parent_task_id ? items.find((item) => item.id === t.parent_task_id) : undefined;
           const assignments = assignmentsByTask[t.id] ?? [];
+          const taskSkills = skillsByTask[t.id] ?? [];
           const myAssignment = me ? assignments.find((assignment) => assignment.user_id === me.id) : undefined;
           const isExpanded = expandedTaskIds.has(t.id);
           const isOverdue = !["READY_TO_CLOSE", "CLOSED"].includes(t.status) && apiDate(t.aggregateDeadline).isBefore(dayjs());
@@ -626,11 +694,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
                       >
                         {isExpanded ? <KeyboardArrowDownRoundedIcon /> : <KeyboardArrowRightRoundedIcon />}
                       </IconButton>
-                    ) : (
-                      <Box sx={{ width: 34, flexShrink: 0 }} />
-                    )}
+                    ) : null}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 900 }} title={t.title}>
+                      <Typography variant="subtitle1" noWrap sx={{ fontWeight: 900 }} title={t.title}>
                         {t.title}
                       </Typography>
                       {t.hasChildren ? (
@@ -639,9 +705,31 @@ export function TasksTab({ projectId }: { projectId: number }) {
                         </Typography>
                       ) : null}
                       {t.description ? (
-                        <Typography variant="body2" sx={{ color: "text.secondary", mt: 1, maxWidth: 860 }}>
+                        <Typography
+                          variant="body2"
+                          title={t.description}
+                          sx={{
+                            color: "text.secondary",
+                            mt: 1,
+                            maxWidth: 860,
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                        >
                           {t.description}
                         </Typography>
+                      ) : null}
+                      {taskSkills.length > 0 ? (
+                        <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", mt: 1.75 }}>
+                          {taskSkills.slice(0, 4).map((skill) => (
+                            <Chip key={skill.skill_id} size="small" label={skill.name} sx={{ fontWeight: 800 }} />
+                          ))}
+                          {taskSkills.length > 4 ? (
+                            <Chip size="small" label={`+${taskSkills.length - 4}`} sx={{ fontWeight: 800 }} />
+                          ) : null}
+                        </Stack>
                       ) : null}
                     </Box>
                     <Chip
@@ -849,6 +937,17 @@ export function TasksTab({ projectId }: { projectId: number }) {
           <ListItemText>Extrage skill-uri</ListItemText>
         </MenuItem>
         <MenuItem
+          disabled={!actionsTask || Boolean(taskTree.find((task) => task.id === actionsTask?.id)?.hasChildren)}
+          onClick={() => {
+            if (!actionsTask) return;
+            if (taskTree.find((task) => task.id === actionsTask.id)?.hasChildren) return;
+            openSkillsDialog(actionsTask);
+          }}
+        >
+          <ListItemIcon><ChecklistRoundedIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Editează competențe</ListItemText>
+        </MenuItem>
+        <MenuItem
           onClick={() => {
             if (!actionsTask) return;
             openEditDialog(actionsTask);
@@ -881,6 +980,100 @@ export function TasksTab({ projectId }: { projectId: number }) {
         <DialogActions>
           <Button variant="contained" onClick={() => setPlanImpactMessage(null)}>
             OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(skillExtractionNotice)} onClose={() => setSkillExtractionNotice(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Nu au fost găsite competențe</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: "text.secondary" }}>
+            {skillExtractionNotice}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setSkillExtractionNotice(null)}>
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(skillExtractionSuccess)} onClose={() => setSkillExtractionSuccess(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Competențe extrase</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: "text.secondary" }}>
+            {skillExtractionSuccess}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setSkillExtractionSuccess(null)}>
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(skillsDialogTask)} onClose={() => setSkillsDialogTask(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Editează competențe</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography sx={{ color: "text.secondary" }}>
+              Selectează competențele necesare pentru taskul „{skillsDialogTask?.title}”.
+            </Typography>
+            <FormControl fullWidth>
+              <InputLabel id="task-skills-label">Competențe necesare</InputLabel>
+              <Select
+                labelId="task-skills-label"
+                label="Competențe necesare"
+                multiple
+                value={selectedSkillIds}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSelectedSkillIds(typeof value === "string" ? value.split(",") : value);
+                }}
+                renderValue={(selected) => (
+                  <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+                    {selected.map((skillId) => {
+                      const skill = skillbook.find((item) => item.id === Number(skillId));
+                      return <Chip key={skillId} size="small" label={skill?.name ?? `Skill ${skillId}`} />;
+                    })}
+                  </Stack>
+                )}
+              >
+                <ListSubheader sx={{ bgcolor: "background.paper", py: 1 }}>
+                  <TextField
+                    size="small"
+                    placeholder="Caută competențe..."
+                    value={skillSearch}
+                    onChange={(event) => setSkillSearch(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    fullWidth
+                    autoFocus
+                  />
+                </ListSubheader>
+                {filteredSkillbook.map((skill) => {
+                  const value = String(skill.id);
+                  return (
+                    <MenuItem key={skill.id} value={value}>
+                      <Checkbox checked={selectedSkillIds.includes(value)} />
+                      <ListItemText primary={skill.name} />
+                    </MenuItem>
+                  );
+                })}
+                {filteredSkillbook.length === 0 ? (
+                  <MenuItem disabled>Nu există rezultate</MenuItem>
+                ) : null}
+              </Select>
+            </FormControl>
+            {skillbook.length === 0 ? (
+              <Alert severity="info">Nu există competențe în Skillbook.</Alert>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSkillsDialogTask(null)}>Anulează</Button>
+          <Button variant="contained" onClick={() => void saveTaskSkills()} disabled={loading || !skillsDialogTask}>
+            Salvează
           </Button>
         </DialogActions>
       </Dialog>

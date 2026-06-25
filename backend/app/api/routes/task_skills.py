@@ -26,7 +26,10 @@ def get_task_skills(task_id: int, db: Session = Depends(get_db), current_user=De
         raise HTTPException(status_code=403, detail="Not a project member")
 
     rows = list_task_requirements(db, task_id)
-    return [{"skill_id": r.skill_id} for r in rows]
+    return [
+        {"skill_id": r.skill_id, "name": skill.name if (skill := get_skill(db, r.skill_id)) else f"Skill {r.skill_id}"}
+        for r in rows
+    ]
 
 
 @router.put("/{task_id}/skills")
@@ -56,7 +59,10 @@ def put_task_skills(task_id: int, payload: TaskSkillsUpdate, db: Session = Depen
 
     rows = replace_task_requirements(db, task_id, [it.skill_id for it in payload.skills])
 
-    return [{"skill_id": r.skill_id} for r in rows]
+    return [
+        {"skill_id": r.skill_id, "name": skill.name if (skill := get_skill(db, r.skill_id)) else f"Skill {r.skill_id}"}
+        for r in rows
+    ]
 
 
 @router.post("/{task_id}/skills/extract", response_model=TaskSkillExtractionResponse)
