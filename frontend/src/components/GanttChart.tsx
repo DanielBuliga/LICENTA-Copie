@@ -1,8 +1,10 @@
 import { Box, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import dayjs from "dayjs";
-import { apiDate } from "../utils/dateTime";
+import "dayjs/locale/ro";
+
 import type { TaskStatus } from "../api/types";
+import { apiDate } from "../utils/dateTime";
 import { getProjectColor, projectPalette } from "../utils/projectColors";
 
 export type GanttTask = {
@@ -30,6 +32,14 @@ function statusLabel(status: string) {
   if (status === "READY_TO_CLOSE") return "Ready";
   if (status === "CLOSED") return "Finalizat";
   return status;
+}
+
+function capitalizeFirst(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatRoDate(value: dayjs.Dayjs, format: string) {
+  return capitalizeFirst(value.locale("ro").format(format));
 }
 
 function taskStart(task: GanttTask) {
@@ -88,7 +98,7 @@ export function GanttChart({ title, subtitle, tasks, compact = false }: Props) {
                     const left = `${(tick.diff(minDate, "day") / Math.max(totalDays - 1, 1)) * 100}%`;
                     return (
                       <Typography key={tick.toISOString()} sx={{ position: "absolute", left, transform: "translateX(-50%)", fontSize: 12, color: "text.secondary", fontWeight: 800 }}>
-                        {tick.format("DD MMM")}
+                        {formatRoDate(tick, "DD MMM")}
                       </Typography>
                     );
                   })}
@@ -118,7 +128,7 @@ export function GanttChart({ title, subtitle, tasks, compact = false }: Props) {
                       <Box sx={{ position: "relative", height: 34, bgcolor: "action.hover", borderRadius: 1.5, overflow: "hidden" }}>
                         <Box sx={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(90deg, rgba(255,255,255,0.14) 1px, transparent 1px)", backgroundSize: `${100 / Math.max(totalDays, 1)}% 100%` }} />
                         <Box
-                          title={`${task.title}: ${start.format("DD MMM")} - ${end.format("DD MMM YYYY")}`}
+                          title={`${task.title}: ${formatRoDate(start, "DD MMM")} - ${formatRoDate(end, "DD MMM YYYY")}`}
                           sx={{
                             position: "absolute",
                             left,

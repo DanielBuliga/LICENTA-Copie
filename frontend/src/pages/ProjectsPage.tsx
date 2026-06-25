@@ -151,13 +151,8 @@ export function ProjectsPage() {
       <Stack spacing={3}>
         <Stack
           direction={{ xs: "column", sm: "row" }}
-          sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" }, gap: 2 }}
+          sx={{ justifyContent: "flex-end", alignItems: { xs: "stretch", sm: "center" }, gap: 2 }}
         >
-          <Box>
-            <Typography sx={{ color: "text.secondary" }}>
-              Organizează proiectele individuale și cele de echipă într-un singur loc.
-            </Typography>
-          </Box>
           <Button
             variant="contained"
             startIcon={<AddRoundedIcon />}

@@ -81,7 +81,28 @@ function SettingSwitch({
       }}
     >
       <Typography sx={{ fontWeight: 850 }}>{label}</Typography>
-      <Switch size="small" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      <Switch
+        size="small"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        sx={{
+          "& .MuiSwitch-switchBase.Mui-checked": {
+            color: "#F8FAFC",
+          },
+          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+            bgcolor: "primary.main",
+            opacity: 1,
+          },
+          "& .MuiSwitch-switchBase:not(.Mui-checked)": {
+            color: "text.disabled",
+          },
+          "& .MuiSwitch-switchBase:not(.Mui-checked) + .MuiSwitch-track": {
+            bgcolor: "action.disabledBackground",
+            opacity: 0.65,
+          },
+        }}
+      />
     </Box>
   );
 }
@@ -278,10 +299,7 @@ export function AccountPage() {
         <Card>
           <CardContent sx={{ p: 3 }}>
             <Stack direction={{ xs: "column", sm: "row" }} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" }, gap: 2 }}>
-              <Box>
-                <Typography variant="h6">Acțiuni cont</Typography>
-                <Typography sx={{ color: "text.secondary" }}>Deconectare sau dezactivare cont.</Typography>
-              </Box>
+              <Typography variant="h6">Acțiuni cont</Typography>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
                 <Button variant="outlined" color="inherit" startIcon={<LogoutRoundedIcon />} onClick={logout} sx={{ minWidth: 154 }}>
                   Deconectare
@@ -299,10 +317,7 @@ export function AccountPage() {
             <CardContent sx={{ p: 3.5 }}>
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", mb: 2 }}>
                 <NotificationsNoneRoundedIcon sx={{ color: "text.secondary" }} />
-                <Box>
-                  <Typography variant="h6">Notificări</Typography>
-                  <Typography sx={{ color: "text.secondary" }}>Canale și evenimente urmărite.</Typography>
-                </Box>
+                <Typography variant="h6">Notificări</Typography>
               </Stack>
 
               <Stack spacing={2}>
@@ -319,15 +334,14 @@ export function AccountPage() {
                   <SettingSwitch label="Mesaje noi" checked={prefs.message_events_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ message_events_enabled: checked })} />
                   <SettingSwitch label="Task gata de verificare" checked={prefs.ready_to_close_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ ready_to_close_enabled: checked })} />
                   <SettingSwitch label="Proiect finalizat" checked={prefs.project_completed_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ project_completed_enabled: checked })} />
-                  <SettingSwitch label="Reminder-e deadline" checked={prefs.deadline_reminders_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ deadline_reminders_enabled: checked })} />
-                  <SettingSwitch label="Reminder-e plan" checked={prefs.scheduled_block_reminders_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ scheduled_block_reminders_enabled: checked })} />
+                  <SettingSwitch label="Alerte deadline" checked={prefs.deadline_reminders_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ deadline_reminders_enabled: checked })} />
+                  <SettingSwitch label="Alerte taskuri planificate" checked={prefs.scheduled_block_reminders_enabled} disabled={loading} onChange={(checked) => void updatePrefs({ scheduled_block_reminders_enabled: checked })} />
                 </Box>
 
                 <Box sx={{ p: 2, borderRadius: 2, bgcolor: "background.default", border: "1px solid", borderColor: "divider" }}>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "flex-start" } }}>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 950 }}>Intervale deadline</Typography>
-                      <Typography sx={{ color: "text.secondary", fontSize: 13 }}>Ore înainte de deadline.</Typography>
+                      <Typography sx={{ fontWeight: 950 }}>Alerte deadline</Typography>
                     </Box>
                     <Stack spacing={1} sx={{ minWidth: { xs: "100%", sm: 300 } }}>
                       <Stack direction="row" spacing={1}>
@@ -362,7 +376,7 @@ export function AccountPage() {
                         key={hour}
                         label={`${hour}h`}
                         onDelete={() => removeReminderHour(hour)}
-                        deleteIcon={<CloseRoundedIcon />}
+                        deleteIcon={<CloseRoundedIcon sx={{ color: `${accent.text} !important` }} />}
                         sx={{ bgcolor: accent.soft, color: accent.text, fontWeight: 900 }}
                       />
                     ))}
@@ -375,8 +389,7 @@ export function AccountPage() {
                 <Box sx={{ p: 2, borderRadius: 2, bgcolor: "background.default", border: "1px solid", borderColor: "divider" }}>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "flex-start" } }}>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 950 }}>Intervale plan</Typography>
-                      <Typography sx={{ color: "text.secondary", fontSize: 13 }}>Minute înainte de blocul planificat.</Typography>
+                      <Typography sx={{ fontWeight: 950 }}>Alerte taskuri planificate în calendar</Typography>
                     </Box>
                     <Stack spacing={1} sx={{ minWidth: { xs: "100%", sm: 300 } }}>
                       <Stack direction="row" spacing={1}>
@@ -411,7 +424,7 @@ export function AccountPage() {
                         key={minute}
                         label={formatPlanReminderLabel(minute)}
                         onDelete={() => removePlanReminderMinute(minute)}
-                        deleteIcon={<CloseRoundedIcon />}
+                        deleteIcon={<CloseRoundedIcon sx={{ color: `${accent.text} !important` }} />}
                         sx={{ bgcolor: accent.soft, color: accent.text, fontWeight: 900 }}
                       />
                     ))}
@@ -431,13 +444,12 @@ export function AccountPage() {
               <PaletteOutlinedIcon sx={{ color: "text.secondary" }} />
               <Box>
                 <Typography variant="h6">Personalizare interfață</Typography>
-                <Typography sx={{ color: "text.secondary" }}>Tema și stilul panourilor.</Typography>
               </Box>
             </Stack>
 
             <Stack spacing={1.75}>
               <Box>
-                <Typography sx={{ fontWeight: 900, mb: 0.75 }}>Tema aplicației</Typography>
+                <Typography sx={{ fontWeight: 900, mb: 0.75 }}>Temă</Typography>
                 <ToggleButtonGroup
                   exclusive
                   size="small"
@@ -446,6 +458,9 @@ export function AccountPage() {
                     if (value && value !== mode) toggleMode();
                   }}
                   sx={{
+                    display: "inline-grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    width: { xs: "100%", sm: 312 },
                     p: 0.4,
                     borderRadius: 2,
                     bgcolor: "background.default",
@@ -454,16 +469,18 @@ export function AccountPage() {
                     "& .MuiToggleButton-root": {
                       border: 0,
                       borderRadius: 1.3,
+                      width: "100%",
                       px: 1.35,
                       py: 0.65,
+                      justifyContent: "center",
                       fontWeight: 850,
                       color: "text.secondary",
                       "&.Mui-selected": { bgcolor: accent.value, color: "#fff" },
                     },
                   }}
                 >
-                  <ToggleButton value="light"><LightModeRoundedIcon sx={{ mr: 0.75, fontSize: 18 }} />Luminos</ToggleButton>
-                  <ToggleButton value="dark"><DarkModeRoundedIcon sx={{ mr: 0.75, fontSize: 18 }} />Întunecat</ToggleButton>
+                  <ToggleButton value="light"><LightModeRoundedIcon sx={{ mr: 0.75, fontSize: 18 }} />Luminoasă</ToggleButton>
+                  <ToggleButton value="dark"><DarkModeRoundedIcon sx={{ mr: 0.75, fontSize: 18 }} />Întunecată</ToggleButton>
                 </ToggleButtonGroup>
               </Box>
 
@@ -477,6 +494,9 @@ export function AccountPage() {
                     if (value) setDesignVariant(value);
                   }}
                   sx={{
+                    display: "inline-grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    width: { xs: "100%", sm: 312 },
                     p: 0.4,
                     borderRadius: 2,
                     bgcolor: "background.default",
@@ -485,8 +505,10 @@ export function AccountPage() {
                     "& .MuiToggleButton-root": {
                       border: 0,
                       borderRadius: 1.3,
+                      width: "100%",
                       px: 1.35,
                       py: 0.65,
+                      justifyContent: "center",
                       fontWeight: 850,
                       color: "text.secondary",
                       "&.Mui-selected": { bgcolor: accent.value, color: "#fff" },

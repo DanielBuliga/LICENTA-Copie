@@ -4,6 +4,7 @@ import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineR
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import dayjs from "dayjs";
+import "dayjs/locale/ro";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../api/api";
@@ -30,6 +31,14 @@ function mergeMessages(current: MessageItem[], incoming: MessageItem[]) {
 function asLocalTime(value: string) {
   const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value);
   return dayjs(hasTimezone ? value : `${value}Z`);
+}
+
+function capitalizeFirst(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatRoDate(value: dayjs.Dayjs, format: string) {
+  return capitalizeFirst(value.locale("ro").format(format));
 }
 
 export function MessagingPage() {
@@ -130,8 +139,8 @@ export function MessagingPage() {
               {projects.map((project) => {
                 const selected = project.id === selectedProjectId;
                 return (
-                  <Button key={project.id} onClick={() => setSelectedProjectId(project.id)} fullWidth sx={{ justifyContent: "flex-start", textAlign: "left", borderRadius: 2, px: 1.5, py: 1.25, mb: 0.5, bgcolor: selected ? accent.soft : "transparent", color: "text.primary", textTransform: "none", "&:hover": { bgcolor: selected ? accent.soft : "action.hover" } }}>
-                    <Stack direction="row" spacing={1.25} sx={{ alignItems: "flex-start", width: "100%" }}><FolderOutlinedIcon sx={{ color: selected ? accent.text : "text.secondary", mt: 0.15 }} /><Box sx={{ minWidth: 0, flex: 1 }}><Typography noWrap sx={{ fontWeight: 900 }}>{project.title}</Typography><Typography noWrap sx={{ color: "text.secondary", fontSize: 13 }}>{selected && messages.at(-1) ? `Ultimul mesaj: ${asLocalTime(messages.at(-1)!.created_at).format("DD MMM, HH:mm")}` : "Chat pe proiect"}</Typography></Box></Stack>
+                  <Button key={project.id} onClick={() => setSelectedProjectId(project.id)} fullWidth sx={{ justifyContent: "flex-start", textAlign: "left", borderRadius: 2, px: 1.5, py: 1.25, mb: 0.5, bgcolor: selected ? accent.soft : "transparent", color: selected ? accent.text : "text.primary", textTransform: "none", "&:hover": { bgcolor: selected ? accent.soft : "action.hover" } }}>
+                    <Stack direction="row" spacing={1.25} sx={{ alignItems: "flex-start", width: "100%" }}><FolderOutlinedIcon sx={{ color: selected ? accent.text : "text.secondary", mt: 0.15 }} /><Box sx={{ minWidth: 0, flex: 1 }}><Typography noWrap sx={{ fontWeight: 900, color: selected ? accent.text : "text.primary" }}>{project.title}</Typography><Typography noWrap sx={{ color: selected ? accent.text : "text.secondary", opacity: selected ? 0.82 : 1, fontSize: 13 }}>{selected && messages.at(-1) ? `Ultimul mesaj: ${formatRoDate(asLocalTime(messages.at(-1)!.created_at), "DD MMM, HH:mm")}` : "Chat pe proiect"}</Typography></Box></Stack>
                   </Button>
                 );
               })}

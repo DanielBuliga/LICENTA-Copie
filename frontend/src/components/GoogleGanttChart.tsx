@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import dayjs from "dayjs";
-import { apiDate } from "../utils/dateTime";
+
 import type { TaskPublic } from "../api/types";
+import { apiDate } from "../utils/dateTime";
 import { getProjectColor } from "../utils/projectColors";
 
 type GoogleDataValue = string | number | Date | null;
@@ -10,7 +11,7 @@ type GoogleDataRow = GoogleDataValue[];
 
 type GoogleChartsApi = {
   charts: {
-    load: (version: string, options: { packages: string[] }) => void;
+    load: (version: string, options: { packages: string[]; language?: string }) => void;
     setOnLoadCallback: (callback: () => void) => void;
   };
   visualization: {
@@ -55,10 +56,10 @@ function loadGoogleCharts() {
     script.async = true;
     script.onload = () => {
       if (!window.google) {
-        reject(new Error("Google Charts nu a putut fi iniÈ›ializat."));
+        reject(new Error("Google Charts nu a putut fi inițializat."));
         return;
       }
-      window.google.charts.load("current", { packages: ["gantt"] });
+      window.google.charts.load("current", { packages: ["gantt"], language: "ro" });
       window.google.charts.setOnLoadCallback(resolve);
     };
     script.onerror = () => reject(new Error("Google Charts nu a putut fi încărcat."));
@@ -157,14 +158,14 @@ export function GoogleGanttChart({ projectId, projectTitle, tasks, dependencies 
         if (cancelled || !ref.current || !window.google) return;
 
         const data = new window.google.visualization.DataTable();
-        data.addColumn("string", "Task ID");
-        data.addColumn("string", "Task Name");
-        data.addColumn("string", "Resource");
-        data.addColumn("date", "Start Date");
-        data.addColumn("date", "End Date");
-        data.addColumn("number", "Duration");
-        data.addColumn("number", "Percent Complete");
-        data.addColumn("string", "Dependencies");
+        data.addColumn("string", "ID task");
+        data.addColumn("string", "Nume task");
+        data.addColumn("string", "Resursă");
+        data.addColumn("date", "Data de început");
+        data.addColumn("date", "Data de final");
+        data.addColumn("number", "Durată");
+        data.addColumn("number", "Procent finalizare");
+        data.addColumn("string", "Dependențe");
 
         const predecessorByTask = new Map<number, string[]>();
         dependencies.forEach((dependency) => {

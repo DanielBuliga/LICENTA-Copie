@@ -275,7 +275,13 @@ export function SkillsPage() {
                   </Select>
                 </FormControl>
 
-                <Button variant="contained" onClick={addMySkill} disabled={!selectedSkillId || saving}>
+                <Button
+                  variant="contained"
+                  startIcon={<AddRoundedIcon />}
+                  onClick={addMySkill}
+                  disabled={!selectedSkillId || saving}
+                  sx={{ minWidth: 116, height: 56, flex: "0 0 auto" }}
+                >
                   Adaugă
                 </Button>
               </Stack>
@@ -286,7 +292,7 @@ export function SkillsPage() {
                     key={skill.skill_id}
                     label={skillName(skill.skill_id)}
                     onDelete={() => void deleteMySkill(skill.skill_id)}
-                    deleteIcon={<DeleteOutlineRoundedIcon />}
+                    deleteIcon={<DeleteOutlineRoundedIcon sx={{ color: `${accent.text} !important` }} />}
                     sx={{ fontWeight: 900, bgcolor: accent.soft, color: accent.text }}
                   />
                 ))}
@@ -299,9 +305,9 @@ export function SkillsPage() {
 
           <Card
             sx={{
-              height: { xs: "70vh", lg: "calc(100vh - 220px)" },
-              minHeight: 420,
-              maxHeight: 620,
+              height: { xs: "70vh", lg: "calc(100vh - 190px)" },
+              minHeight: { xs: 420, lg: 560 },
+              maxHeight: 760,
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",

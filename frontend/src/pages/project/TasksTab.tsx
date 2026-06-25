@@ -41,6 +41,7 @@ import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownR
 import KeyboardArrowRightRoundedIcon from "@mui/icons-material/KeyboardArrowRightRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import dayjs, { Dayjs } from "dayjs";
+import "dayjs/locale/ro";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/api";
@@ -227,6 +228,14 @@ function formatMinutes(m: number) {
   const r = m % 60;
   if (r === 0) return `${h} h`;
   return `${h} h ${r} min`;
+}
+
+function capitalizeFirst(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatRoDate(value: Dayjs, format: string) {
+  return capitalizeFirst(value.locale("ro").format(format));
 }
 
 function statusChipColor(status: TaskStatus): "default" | "success" | "warning" {
@@ -882,9 +891,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
                         label={`${t.hasChildren ? "Estimare agregată" : "Estimare"}: ${formatMinutes(t.aggregateEstimateMinutes)}`}
                         sx={{
                           justifyContent: "flex-start",
-                          bgcolor: alpha(accent.value, 0.12),
-                          color: accent.text,
-                          border: `1px solid ${alpha(accent.value, 0.25)}`,
+                          bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#E0F2FE", 0.14) : alpha(accent.value, 0.12)),
+                          color: (theme) => (theme.palette.mode === "dark" ? "#F8FAFC" : accent.text),
+                          border: (theme) => `1px solid ${theme.palette.mode === "dark" ? alpha("#E0F2FE", 0.28) : alpha(accent.value, 0.25)}`,
                           fontWeight: 800,
                           "& .MuiChip-icon": { color: "inherit" },
                           maxWidth: "100%",
@@ -892,7 +901,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                       />
                       <Chip
                         icon={isOverdue ? <WarningAmberRoundedIcon /> : <EventRoundedIcon />}
-                        label={`${t.hasChildren ? "Deadline agregat" : "Deadline"}: ${apiDate(t.aggregateDeadline).format("DD MMM YYYY, HH:mm")}`}
+                        label={`${t.hasChildren ? "Deadline agregat" : "Deadline"}: ${formatRoDate(apiDate(t.aggregateDeadline), "DD MMM YYYY, HH:mm")}`}
                         color={isOverdue ? "error" : "default"}
                         variant="outlined"
                         sx={{

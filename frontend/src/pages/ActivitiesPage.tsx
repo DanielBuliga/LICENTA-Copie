@@ -13,6 +13,8 @@ import ViewColumnRoundedIcon from "@mui/icons-material/ViewColumnRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import dayjs from "dayjs";
+import "dayjs/locale/ro";
+import type { Dayjs } from "dayjs";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/api";
@@ -33,6 +35,14 @@ function formatMinutes(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
+function capitalizeFirst(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatRoDate(value: Dayjs, format: string) {
+  return capitalizeFirst(value.locale("ro").format(format));
 }
 
 function priorityInfo(priority: number) {
@@ -164,7 +174,7 @@ export function ActivitiesPage() {
                           <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mt: 1.25 }}>
                             <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexWrap: "wrap" }}>
                               {isOverdue ? <WarningAmberRoundedIcon color="error" sx={{ fontSize: 16 }} /> : null}
-                              <Typography sx={{ color: isOverdue ? "error.main" : "text.secondary", fontSize: 13, fontWeight: isOverdue ? 900 : 400 }}>{apiDate(task.deadline).format("DD MMM")}</Typography>
+                              <Typography sx={{ color: isOverdue ? "error.main" : "text.secondary", fontSize: 13, fontWeight: isOverdue ? 900 : 400 }}>{formatRoDate(apiDate(task.deadline), "DD MMM")}</Typography>
                             </Stack>
                             <FormControl size="small" onClick={(event) => event.stopPropagation()} sx={{ minWidth: 132 }}>
                               <Select value={task.member_status} onChange={(event) => void updateStatus(task.id, event.target.value as MemberStatus)} disabled={updatingId === task.id || task.status === "CLOSED"} sx={{ height: 28, fontWeight: 800, fontSize: 12 }}>
@@ -202,7 +212,7 @@ export function ActivitiesPage() {
                         <Chip size="small" icon={<FolderRoundedIcon />} label={task.project_title} sx={{ fontWeight: 800 }} />
                         {task.parent_task_title ? <Chip size="small" icon={<AccountTreeRoundedIcon />} label={task.parent_task_title} sx={{ fontWeight: 800 }} /> : null}
                         <Chip size="small" icon={<AccessTimeRoundedIcon />} label={formatMinutes(task.assigned_minutes ?? task.estimate_minutes)} sx={{ fontWeight: 800 }} />
-                        <Chip size="small" icon={isOverdue ? <WarningAmberRoundedIcon /> : <EventRoundedIcon />} label={apiDate(task.deadline).format("DD MMM YYYY")} color={isOverdue ? "error" : "default"} variant="outlined" sx={{ fontWeight: 800 }} />
+                        <Chip size="small" icon={isOverdue ? <WarningAmberRoundedIcon /> : <EventRoundedIcon />} label={formatRoDate(apiDate(task.deadline), "DD MMM YYYY")} color={isOverdue ? "error" : "default"} variant="outlined" sx={{ fontWeight: 800 }} />
                         <FormControl size="small" onClick={(event) => event.stopPropagation()} sx={{ minWidth: 150 }}>
                           <Select value={task.member_status} onChange={(event) => void updateStatus(task.id, event.target.value as MemberStatus)} disabled={updatingId === task.id || task.status === "CLOSED"} sx={{ height: 28, fontWeight: 800, fontSize: 13 }}>
                             <MenuItem value="TODO">TODO</MenuItem>

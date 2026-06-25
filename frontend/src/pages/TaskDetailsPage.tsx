@@ -156,7 +156,7 @@ export function TaskDetailsPage() {
               <CardContent sx={{ p: 3 }}>
                 <Stack spacing={2}>
                   <Box>
-                    <Typography variant="h4" sx={{ fontWeight: 950 }}>{task.title}</Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 950 }}>{task.title}</Typography>
                     <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
                       <Chip icon={<FolderRoundedIcon />} label={task.project_title} sx={{ fontWeight: 800 }} />
                       {task.parent_task_title ? <Chip icon={<AccountTreeRoundedIcon />} label={task.parent_task_title} sx={{ fontWeight: 800 }} /> : null}

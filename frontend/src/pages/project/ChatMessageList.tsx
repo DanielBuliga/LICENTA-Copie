@@ -3,6 +3,7 @@ import { Avatar, Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import dayjs from "dayjs";
+import "dayjs/locale/ro";
 
 import { useAccentColor } from "../../hooks/useAccentColor";
 
@@ -23,6 +24,14 @@ function senderName(message: ChatMessageItem) {
 function asLocalTime(value: string) {
   const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value);
   return dayjs(hasTimezone ? value : `${value}Z`);
+}
+
+function capitalizeFirst(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatRoDate(value: dayjs.Dayjs, format: string) {
+  return capitalizeFirst(value.locale("ro").format(format));
 }
 
 export function ChatMessageList({ messages, currentUserId }: { messages: ChatMessageItem[]; currentUserId?: number | null }) {
@@ -87,8 +96,8 @@ export function ChatMessageList({ messages, currentUserId }: { messages: ChatMes
         {messages.map((message, index) => {
           const name = senderName(message);
           const createdAt = asLocalTime(message.created_at);
-          const day = createdAt.format("DD MMM YYYY");
-          const previousDay = index > 0 ? asLocalTime(messages[index - 1].created_at).format("DD MMM YYYY") : "";
+          const day = formatRoDate(createdAt, "DD MMM YYYY");
+          const previousDay = index > 0 ? formatRoDate(asLocalTime(messages[index - 1].created_at), "DD MMM YYYY") : "";
           const showDay = day !== previousDay;
           const mine = currentUserId === message.sender_id;
 
