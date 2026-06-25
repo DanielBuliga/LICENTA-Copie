@@ -18,6 +18,18 @@ from app.services.tasks_service import get_task
 router = APIRouter(tags=["documents"])
 
 DOCUMENT_UPLOAD_DIR = Path(UPLOAD_DIR) / "documents"
+ALLOWED_DOCUMENT_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".txt",
+    ".md",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".xlsx",
+    ".pptx",
+}
 
 
 def safe_filename(filename: str) -> str:
@@ -28,6 +40,19 @@ def safe_filename(filename: str) -> str:
 
 def document_storage_path(document_id: int, file_name: str) -> Path:
     return DOCUMENT_UPLOAD_DIR / f"{document_id}_{safe_filename(file_name)}"
+
+
+def validate_document_file(file_name: str, file_bytes: bytes) -> None:
+    extension = Path(file_name).suffix.lower()
+    if extension not in ALLOWED_DOCUMENT_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_DOCUMENT_EXTENSIONS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tip de fișier nepermis. Sunt acceptate: {allowed}.",
+        )
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        max_mb = max(1, MAX_UPLOAD_BYTES // (1024 * 1024))
+        raise HTTPException(status_code=413, detail=f"Fișierul este prea mare. Dimensiunea maximă este {max_mb} MB.")
 
 
 def find_stored_document(document_id: int) -> Path | None:
@@ -41,7 +66,8 @@ def parse_multipart_upload(content_type: str | None, body: bytes) -> tuple[str, 
     if not content_type or "multipart/form-data" not in content_type:
         raise HTTPException(status_code=400, detail="Expected multipart/form-data")
     if len(body) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large")
+        max_mb = max(1, MAX_UPLOAD_BYTES // (1024 * 1024))
+        raise HTTPException(status_code=413, detail=f"Fișierul este prea mare. Dimensiunea maximă este {max_mb} MB.")
 
     message_bytes = b"Content-Type: " + content_type.encode("utf-8") + b"\r\nMIME-Version: 1.0\r\n\r\n" + body
     message = BytesParser(policy=policy.default).parsebytes(message_bytes)
@@ -63,7 +89,8 @@ def parse_multipart_upload(content_type: str | None, body: bytes) -> tuple[str, 
             fields[name] = payload.decode(charset, errors="replace")
 
     if file_name is None or file_bytes is None:
-        raise HTTPException(status_code=400, detail="Missing uploaded file")
+        raise HTTPException(status_code=400, detail="Lipsește fișierul încărcat.")
+    validate_document_file(file_name, file_bytes)
     return file_name, file_bytes, fields
 
 

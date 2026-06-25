@@ -27,6 +27,29 @@ type TaskItem = {
   title: string;
 };
 
+const ALLOWED_DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".xlsx", ".pptx"];
+const DOCUMENT_ACCEPT = ALLOWED_DOCUMENT_EXTENSIONS.join(",");
+const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
+function documentValidationMessage(file: File) {
+  const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+  if (!ALLOWED_DOCUMENT_EXTENSIONS.includes(extension)) {
+    return `Tip de fișier nepermis. Sunt acceptate: ${ALLOWED_DOCUMENT_EXTENSIONS.join(", ")}.`;
+  }
+  if (file.size > MAX_DOCUMENT_BYTES) {
+    return "Fișierul este prea mare. Dimensiunea maximă este 25 MB.";
+  }
+  return null;
+}
+
+function documentUploadErrorMessage(raw: string) {
+  const value = raw.toLowerCase();
+  if (value.includes("too large") || value.includes("prea mare") || value.includes("413")) {
+    return "Fișierul este prea mare. Dimensiunea maximă este 25 MB.";
+  }
+  return raw;
+}
+
 export function ProjectDocumentsList({
   documents,
   onOpen,
@@ -109,6 +132,16 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
+    if (file) {
+      const validationError = documentValidationMessage(file);
+      if (validationError) {
+        setSelectedFile(null);
+        setError(validationError);
+        event.target.value = "";
+        return;
+      }
+    }
+    setError(null);
     setSelectedFile(file);
   }
 
@@ -128,7 +161,7 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
       setTaskId("project");
       await load();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut adauga documentul"));
+      setError(documentUploadErrorMessage(getApiErrorMessage(err, "Nu am putut adăuga documentul")));
     } finally {
       setLoading(false);
     }
@@ -178,7 +211,7 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
 
             <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ width: "100%" }}>
               {!projectOnly ? (
-                <TextField select label="Ataseaza la" value={taskId} onChange={(event) => setTaskId(event.target.value)} sx={{ minWidth: 210 }}>
+                <TextField select label="Atașează la" value={taskId} onChange={(event) => setTaskId(event.target.value)} sx={{ minWidth: 210 }}>
                   <MenuItem value="project">Nivel proiect</MenuItem>
                   {tasks.map((task) => (
                     <MenuItem key={task.id} value={String(task.id)}>
@@ -189,7 +222,7 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
               ) : null}
               <Button component="label" variant="outlined" startIcon={<UploadFileRoundedIcon />} sx={{ minWidth: 210 }}>
                 Alege fișier
-                <input hidden type="file" onChange={onFileChange} />
+                <input hidden type="file" accept={DOCUMENT_ACCEPT} onChange={onFileChange} />
               </Button>
               <TextField label="Fișier selectat" value={selectedFile?.name ?? ""} fullWidth disabled placeholder="Niciun fișier selectat" />
               <TextField label="Descriere" value={description} onChange={(event) => setDescription(event.target.value)} fullWidth />
