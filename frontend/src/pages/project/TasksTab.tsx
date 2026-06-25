@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -121,6 +121,105 @@ type SkillItem = {
   id: number;
   name: string;
 };
+
+function TaskSkillRow({ skills }: { skills: TaskSkillRequirement[] }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [visibleCount, setVisibleCount] = useState(skills.length);
+
+  const computeVisibleCount = useCallback(() => {
+    const container = containerRef.current;
+    const measure = measureRef.current;
+    if (!container || !measure || skills.length === 0) {
+      setVisibleCount(skills.length);
+      return;
+    }
+
+    const available = container.clientWidth;
+    const chipNodes = Array.from(measure.querySelectorAll<HTMLElement>("[data-skill-chip]"));
+    const plusNode = measure.querySelector<HTMLElement>("[data-plus-chip]");
+    const gap = 6;
+    const chipWidths = chipNodes.map((node) => node.offsetWidth);
+    const totalWidth = chipWidths.reduce((total, width) => total + width, 0) + gap * Math.max(0, chipWidths.length - 1);
+
+    if (totalWidth <= available) {
+      setVisibleCount(skills.length);
+      return;
+    }
+
+    const plusWidth = plusNode?.offsetWidth ?? 40;
+    let used = 0;
+    let count = 0;
+
+    for (const width of chipWidths) {
+      const nextCount = count + 1;
+      const hiddenAfterNext = skills.length - nextCount;
+      const nextUsed = used + (count > 0 ? gap : 0) + width;
+      const required = hiddenAfterNext > 0 ? nextUsed + gap + plusWidth : nextUsed;
+      if (required > available) break;
+      used = nextUsed;
+      count = nextCount;
+    }
+
+    setVisibleCount(Math.max(0, count));
+  }, [skills]);
+
+  useLayoutEffect(() => {
+    computeVisibleCount();
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => computeVisibleCount());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [computeVisibleCount]);
+
+  if (skills.length === 0) return null;
+
+  const hiddenCount = Math.max(0, skills.length - visibleCount);
+
+  return (
+    <Box sx={{ position: "relative", minWidth: 0, mt: 1.75 }}>
+      <Stack
+        ref={containerRef}
+        direction="row"
+        spacing={0.75}
+        useFlexGap
+        sx={{ flexWrap: "nowrap", overflow: "hidden", minWidth: 0, maxWidth: "100%" }}
+      >
+        {skills.slice(0, visibleCount).map((skill) => (
+          <Chip key={skill.skill_id} size="small" label={skill.name} sx={{ fontWeight: 800, flexShrink: 0 }} />
+        ))}
+        {hiddenCount > 0 ? (
+          <Chip size="small" label={`+${hiddenCount}`} sx={{ fontWeight: 800, flexShrink: 0 }} />
+        ) : null}
+      </Stack>
+
+      <Stack
+        ref={measureRef}
+        direction="row"
+        spacing={0.75}
+        useFlexGap
+        aria-hidden="true"
+        sx={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          visibility: "hidden",
+          pointerEvents: "none",
+          height: 0,
+          overflow: "hidden",
+          flexWrap: "nowrap",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {skills.map((skill) => (
+          <Chip data-skill-chip key={skill.skill_id} size="small" label={skill.name} sx={{ fontWeight: 800 }} />
+        ))}
+        <Chip data-plus-chip size="small" label={`+${skills.length}`} sx={{ fontWeight: 800 }} />
+      </Stack>
+    </Box>
+  );
+}
 
 function formatMinutes(m: number) {
   if (m < 60) return `${m} min`;
@@ -551,7 +650,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       const names = res.data.suggestions.map((skill) => {
         const confidence = Math.round(skill.confidence * 100);
         const matchedTerm = skill.matched_term ? `, termen: ${skill.matched_term}` : "";
-        return `${skill.name} (${confidence}%${matchedTerm})`;
+        return `${skill.name} (scor încredere: ${confidence}%${matchedTerm})`;
       });
       if (names.length) {
         setSkillExtractionSuccess(`Competențe extrase. Potrivirile foarte sigure au fost aplicate automat: ${names.join(", ")}. Documente analizate: ${res.data.document_count}.`);
@@ -721,16 +820,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                           {t.description}
                         </Typography>
                       ) : null}
-                      {taskSkills.length > 0 ? (
-                        <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", mt: 1.75 }}>
-                          {taskSkills.slice(0, 4).map((skill) => (
-                            <Chip key={skill.skill_id} size="small" label={skill.name} sx={{ fontWeight: 800 }} />
-                          ))}
-                          {taskSkills.length > 4 ? (
-                            <Chip size="small" label={`+${taskSkills.length - 4}`} sx={{ fontWeight: 800 }} />
-                          ) : null}
-                        </Stack>
-                      ) : null}
+                      <TaskSkillRow skills={taskSkills} />
                     </Box>
                     <Chip
                       size="small"

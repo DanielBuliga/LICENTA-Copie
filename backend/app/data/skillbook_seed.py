@@ -73,7 +73,7 @@ SKILLBOOK_SEED: dict[str, list[str]] = {
     "JWT": ["json web token", "token jwt", "access token", "bearer token"],
     "Autentificare": ["authentication", "auth", "login", "register"],
     "Autorizare": ["authorization", "roles", "role based access", "permissions"],
-    "Hash parole": ["password hashing", "bcrypt", "passlib", "password security"],
+    "Hash parole": ["password hashing", "bcrypt", "passlib", "password security", "hashing parole", "hashing securizat"],
     "CORS": ["cross origin", "cross-origin resource sharing"],
     "Notificări email": ["email notifications", "smtp", "email", "mail notifications", "notificari email"],
     "Worker de fundal": ["background worker", "worker", "background task", "scheduled worker"],
@@ -114,7 +114,7 @@ SKILLBOOK_SEED: dict[str, list[str]] = {
     "Refactorizare": ["refactoring", "code cleanup"],
 
     # Security
-    "Securitate web": ["web security", "owasp"],
+    "Securitate web": ["web security", "owasp", "securitate web", "securitate aplicatie", "rute private", "protejarea rutelor", "hashing securizat"],
     "Control acces": ["access control", "rbac", "role based access control"],
     "Validare input": ["input validation", "sanitize input"],
     "Securitate upload fișiere": ["file upload security", "upload securizat", "secure file upload"],
