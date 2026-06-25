@@ -18,7 +18,7 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
 
   if (Array.isArray(detail)) {
     const msg = detail[0]?.msg;
-    return typeof msg === "string" ? msg : "Invalid input";
+    return typeof msg === "string" ? msg : "Datele introduse nu sunt valide.";
   }
 
   const msg = detail.msg;

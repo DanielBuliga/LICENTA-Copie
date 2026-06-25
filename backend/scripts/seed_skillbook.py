@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import func
 
-from app.data.skillbook_seed import SKILLBOOK_SEED
+from app.data.skillbook_seed import SKILL_RENAMES, SKILLBOOK_SEED
 from app.db.session import SessionLocal
 from app.models.skill import Skill
 from app.models.skill_alias import SkillAlias
@@ -16,12 +16,26 @@ def main() -> None:
     db = SessionLocal()
     created_skills = 0
     created_aliases = 0
+    renamed_skills = 0
 
     try:
         existing_skills = {
             normalize(name): skill
             for skill, name in db.query(Skill, Skill.name).all()
         }
+
+        for old_name, new_name in SKILL_RENAMES.items():
+            old_key = normalize(old_name)
+            new_key = normalize(new_name)
+            old_skill = existing_skills.get(old_key)
+            new_skill = existing_skills.get(new_key)
+            if old_skill is None or new_skill is not None:
+                continue
+
+            old_skill.name = new_name
+            existing_skills.pop(old_key, None)
+            existing_skills[new_key] = old_skill
+            renamed_skills += 1
 
         for skill_name, aliases in SKILLBOOK_SEED.items():
             key = normalize(skill_name)
@@ -56,6 +70,7 @@ def main() -> None:
 
         total_skills = db.query(func.count(Skill.id)).scalar() or 0
         total_aliases = db.query(func.count(SkillAlias.id)).scalar() or 0
+        print(f"Renamed skills: {renamed_skills}")
         print(f"Created skills: {created_skills}")
         print(f"Created aliases: {created_aliases}")
         print(f"Total skills: {total_skills}")

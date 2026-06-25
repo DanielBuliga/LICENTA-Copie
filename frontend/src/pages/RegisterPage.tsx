@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
-import { Box, TextField, Button, Typography, Link, Alert } from "@mui/material";
+import { Alert, Box, Button, Link, TextField, Typography } from "@mui/material";
 
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
@@ -9,7 +9,19 @@ import { AuthLayout } from "../components/AuthLayout";
 function friendlyMessage(raw: string): string {
   const s = raw.toLowerCase();
   if (s.includes("already") && s.includes("used")) {
-    return "An account with this email already exists";
+    return "Există deja un cont cu această adresă de email.";
+  }
+  if (s.includes("valid email") || s.includes("email")) {
+    return "Introdu o adresă de email validă.";
+  }
+  if (s.includes("password") && (s.includes("short") || s.includes("least") || s.includes("min"))) {
+    return "Parola trebuie să aibă cel puțin 6 caractere.";
+  }
+  if (s.includes("name") && (s.includes("short") || s.includes("least") || s.includes("min"))) {
+    return "Numele trebuie să aibă cel puțin 2 caractere.";
+  }
+  if (s.includes("required") || s.includes("missing")) {
+    return "Completează toate câmpurile obligatorii.";
   }
   return raw;
 }
@@ -51,7 +63,7 @@ export function RegisterPage() {
 
       nav("/login");
     } catch (err: unknown) {
-      const raw = getApiErrorMessage(err, "Register failed");
+      const raw = getApiErrorMessage(err, "Înregistrarea a eșuat.");
       setError(friendlyMessage(raw));
     } finally {
       setLoading(false);
@@ -59,7 +71,7 @@ export function RegisterPage() {
   }
 
   return (
-    <AuthLayout title="Inregistrare" subtitle="Creeaza contul pentru Smart Planner.">
+    <AuthLayout title="Înregistrare" subtitle="Creează contul pentru Smart Planner.">
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -69,14 +81,14 @@ export function RegisterPage() {
       <Box component="form" onSubmit={onSubmit}>
         <TextField
           label="Nume"
-          placeholder="Numele tau"
+          placeholder="Numele tău"
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
           fullWidth
           margin="normal"
           error={name.length > 0 && !nameValid}
-          helperText={name.length > 0 && !nameValid ? "Numele trebuie sa aiba cel putin 2 caractere" : ""}
+          helperText={name.length > 0 && !nameValid ? "Numele trebuie să aibă cel puțin 2 caractere." : ""}
         />
 
         <TextField
@@ -89,12 +101,12 @@ export function RegisterPage() {
           fullWidth
           margin="normal"
           error={email.length > 0 && !emailValid}
-          helperText={email.length > 0 && !emailValid ? "Introdu o adresa de email valida" : ""}
+          helperText={email.length > 0 && !emailValid ? "Introdu o adresă de email validă." : ""}
         />
 
         <TextField
           label="Parola"
-          placeholder="minimum 6 caractere"
+          placeholder="Minimum 6 caractere"
           type="password"
           required
           value={password}
@@ -102,17 +114,17 @@ export function RegisterPage() {
           fullWidth
           margin="normal"
           error={password.length > 0 && !passwordValid}
-          helperText={password.length > 0 && !passwordValid ? "Parola trebuie sa aiba cel putin 6 caractere" : ""}
+          helperText={password.length > 0 && !passwordValid ? "Parola trebuie să aibă cel puțin 6 caractere." : ""}
         />
 
         <Button type="submit" variant="contained" fullWidth disabled={loading || !formValid} sx={{ mt: 2 }}>
-          {loading ? "Se creeaza..." : "Creeaza cont"}
+          {loading ? "Se creează..." : "Creează cont"}
         </Button>
 
         <Typography sx={{ mt: 2.5, color: "text.secondary", textAlign: "center" }}>
           Ai deja cont?{" "}
           <Link component={RouterLink} to="/login" sx={{ fontWeight: 800 }}>
-            Autentifica-te
+            Autentifică-te
           </Link>
         </Typography>
       </Box>

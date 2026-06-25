@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -14,14 +14,10 @@ import {
   Select,
   Stack,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import BuildRoundedIcon from "@mui/icons-material/BuildRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import StarBorderRoundedIcon from "@mui/icons-material/StarBorderRounded";
 
 import { api } from "../api/api";
 import { getApiErrorMessage } from "../api/errors";
@@ -43,6 +39,15 @@ type SkillAlias = {
 type UserSkill = {
   skill_id: number;
 };
+
+const MIN_SKILL_NAME_LENGTH = 2;
+const MAX_SKILL_NAME_LENGTH = 100;
+const MIN_ALIAS_LENGTH = 2;
+const MAX_ALIAS_LENGTH = 120;
+
+function normalizeTerm(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
 
 export function SkillsPage() {
   const accent = useAccentColor();
@@ -88,9 +93,32 @@ export function SkillsPage() {
 
   const mySkillIds = useMemo(() => new Set(mySkills.map((skill) => skill.skill_id)), [mySkills]);
   const availableToAdd = skills.filter((skill) => !mySkillIds.has(skill.id));
+  const normalizedSkillNames = useMemo(() => new Set(skills.map((skill) => normalizeTerm(skill.name))), [skills]);
+  const newSkillNameNormalized = normalizeTerm(newSkillName);
+  const newSkillNameLength = newSkillName.trim().length;
+  const newSkillError = (() => {
+    if (!newSkillName.trim()) return "";
+    if (newSkillNameLength < MIN_SKILL_NAME_LENGTH) return "Numele trebuie să aibă cel puțin 2 caractere.";
+    if (newSkillNameLength > MAX_SKILL_NAME_LENGTH) return "Numele poate avea cel mult 100 de caractere.";
+    if (normalizedSkillNames.has(newSkillNameNormalized)) return "Această competență există deja.";
+    return "";
+  })();
 
   function skillName(skillId: number) {
     return skills.find((skill) => skill.id === skillId)?.name ?? `Skill ${skillId}`;
+  }
+
+  function aliasError(skill: Skill) {
+    const alias = newAliasBySkill[skill.id] ?? "";
+    const normalizedAlias = normalizeTerm(alias);
+    if (!alias.trim()) return "";
+    if (alias.trim().length < MIN_ALIAS_LENGTH) return "Aliasul trebuie să aibă cel puțin 2 caractere.";
+    if (alias.trim().length > MAX_ALIAS_LENGTH) return "Aliasul poate avea cel mult 120 de caractere.";
+    if (normalizedAlias === normalizeTerm(skill.name)) return "Aliasul nu poate fi identic cu numele competenței.";
+    if ((aliasesBySkill[skill.id] ?? []).some((item) => normalizeTerm(item.alias) === normalizedAlias)) {
+      return "Acest alias există deja.";
+    }
+    return "";
   }
 
   async function addMySkill() {
@@ -113,7 +141,7 @@ export function SkillsPage() {
 
   async function createSkill() {
     const name = newSkillName.trim();
-    if (!name) return;
+    if (!name || newSkillError) return;
 
     setSaving(true);
     setError(null);
@@ -174,7 +202,8 @@ export function SkillsPage() {
 
   async function addAlias(skillId: number) {
     const alias = (newAliasBySkill[skillId] ?? "").trim();
-    if (!alias) return;
+    const skill = skills.find((item) => item.id === skillId);
+    if (!alias || !skill || aliasError(skill)) return;
 
     setSaving(true);
     setError(null);
@@ -225,22 +254,16 @@ export function SkillsPage() {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                  <StarBorderRoundedIcon sx={{ color: accent.value }} />
-                  <Typography variant="h6">Skillurile mele</Typography>
+                  <Typography variant="h6">Competențele mele</Typography>
                 </Stack>
-                <Tooltip title="Skillurile declarate de utilizator sunt folosite direct la eligibilitatea pentru taskuri.">
-                  <IconButton size="small">
-                    <InfoOutlinedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
               </Stack>
 
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 3 }}>
                 <FormControl fullWidth>
-                  <InputLabel id="skill-select-label">Adaugă un skill</InputLabel>
+                  <InputLabel id="skill-select-label">Adaugă o competență</InputLabel>
                   <Select
                     labelId="skill-select-label"
-                    label="Adaugă un skill"
+                    label="Adaugă o competență"
                     value={selectedSkillId}
                     onChange={(event) => setSelectedSkillId(event.target.value)}
                   >
@@ -268,7 +291,7 @@ export function SkillsPage() {
                   />
                 ))}
                 {mySkills.length === 0 && !loading ? (
-                  <Typography sx={{ color: "text.secondary", mx: "auto", mt: 4 }}>Niciun skill adăugat</Typography>
+                  <Typography sx={{ color: "text.secondary", mx: "auto", mt: 4 }}>Nicio competență adăugată</Typography>
                 ) : null}
               </Stack>
             </CardContent>
@@ -296,14 +319,8 @@ export function SkillsPage() {
             >
               <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                  <BuildRoundedIcon sx={{ color: accent.value }} />
                   <Typography variant="h6">Skillbook</Typography>
                 </Stack>
-                <Tooltip title="Catalogul controlează skillurile care pot fi extrase automat din taskuri.">
-                  <IconButton size="small">
-                    <InfoOutlinedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
               </Stack>
 
               <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
@@ -311,13 +328,16 @@ export function SkillsPage() {
                   label="Nume skill nou"
                   value={newSkillName}
                   onChange={(event) => setNewSkillName(event.target.value)}
+                  error={Boolean(newSkillError)}
+                  helperText={newSkillError || " "}
+                  slotProps={{ htmlInput: { maxLength: MAX_SKILL_NAME_LENGTH } }}
                   fullWidth
                 />
                 <Button
                   variant="contained"
                   startIcon={<AddRoundedIcon />}
                   onClick={createSkill}
-                  disabled={!newSkillName.trim() || saving}
+                  disabled={!newSkillName.trim() || Boolean(newSkillError) || saving}
                   sx={{ minWidth: 82 }}
                 >
                   Adaugă
@@ -334,24 +354,31 @@ export function SkillsPage() {
                   maxHeight: "none",
                 }}
               >
-                {skills.map((skill) => (
+                {skills.map((skill) => {
+                  const currentAliasError = aliasError(skill);
+                  return (
                   <Box
                     key={skill.id}
                     sx={{
-                      display: "grid",
-                      gridTemplateColumns: { xs: "1fr", md: "minmax(140px, 1fr) minmax(220px, 2fr) auto" },
-                      alignItems: "center",
-                      gap: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1.25,
                       px: 2,
-                      py: 1.35,
+                      py: 1.5,
                       borderRadius: 2,
                       bgcolor: (theme) => (theme.palette.mode === "dark" ? "rgba(255,255,255,0.04)" : "#F8FAFC"),
                       border: "1px solid",
                       borderColor: "divider",
                     }}
                   >
-                    <Typography sx={{ fontWeight: 800 }}>{skill.name}</Typography>
-                    <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
+                    <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 2 }}>
+                      <Typography sx={{ fontWeight: 900, minWidth: 0, overflowWrap: "anywhere" }}>{skill.name}</Typography>
+                      <IconButton color="error" onClick={() => void deleteCatalogSkill(skill.id)} disabled={saving} sx={{ mt: -0.75, mr: -0.75, flex: "0 0 auto" }}>
+                        <DeleteOutlineRoundedIcon />
+                      </IconButton>
+                    </Stack>
+
+                    <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center", minHeight: 32 }}>
                       {(aliasesBySkill[skill.id] ?? []).map((alias) => (
                         <Chip
                           key={alias.id}
@@ -361,29 +388,34 @@ export function SkillsPage() {
                           sx={{ fontWeight: 800 }}
                         />
                       ))}
+                      {(aliasesBySkill[skill.id] ?? []).length === 0 ? (
+                        <Typography sx={{ color: "text.secondary", fontSize: 13 }}>Fără aliasuri.</Typography>
+                      ) : null}
+                    </Stack>
+
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { xs: "stretch", sm: "center" } }}>
                       <TextField
                         size="small"
                         label="Alias"
                         value={newAliasBySkill[skill.id] ?? ""}
                         onChange={(event) => setNewAliasBySkill((current) => ({ ...current, [skill.id]: event.target.value }))}
-                        sx={{ minWidth: 140, flex: "1 1 140px" }}
+                        error={Boolean(currentAliasError)}
+                        helperText={currentAliasError || " "}
+                        slotProps={{ htmlInput: { maxLength: MAX_ALIAS_LENGTH } }}
+                        sx={{ flex: 1 }}
                       />
                       <Button
                         size="small"
                         variant="outlined"
                         onClick={() => void addAlias(skill.id)}
-                        disabled={!(newAliasBySkill[skill.id] ?? "").trim() || saving}
+                        disabled={!(newAliasBySkill[skill.id] ?? "").trim() || Boolean(currentAliasError) || saving}
                       >
-                        Alias
+                        Adaugă
                       </Button>
                     </Stack>
-                    <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "flex-end" }}>
-                      <IconButton color="error" onClick={() => void deleteCatalogSkill(skill.id)} disabled={saving}>
-                        <DeleteOutlineRoundedIcon />
-                      </IconButton>
-                    </Stack>
                   </Box>
-                ))}
+                  );
+                })}
                 {skills.length === 0 && !loading ? (
                   <Typography sx={{ color: "text.secondary" }}>Nu există competențe definite.</Typography>
                 ) : null}

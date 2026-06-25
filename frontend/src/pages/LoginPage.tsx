@@ -11,7 +11,13 @@ import { AuthLayout } from "../components/AuthLayout";
 function friendlyMessage(raw: string): string {
   const s = raw.toLowerCase();
   if (s.includes("invalid") || s.includes("incorrect") || s.includes("wrong")) {
-    return "Email or password is incorrect";
+    return "Email sau parolă incorecte.";
+  }
+  if (s.includes("required") || s.includes("missing")) {
+    return "Completează emailul și parola.";
+  }
+  if (s.includes("valid email") || s.includes("email")) {
+    return "Introdu o adresă de email validă.";
   }
   return raw;
 }
@@ -43,7 +49,7 @@ export function LoginPage() {
       setToken(res.data.access_token);
       nav("/dashboard");
     } catch (err: unknown) {
-      const raw = getApiErrorMessage(err, "Login failed");
+      const raw = getApiErrorMessage(err, "Autentificarea a eșuat.");
       setError(friendlyMessage(raw));
     } finally {
       setLoading(false);
@@ -51,7 +57,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title="Autentificare" subtitle="Continua organizarea proiectelor tale.">
+    <AuthLayout title="Autentificare" subtitle="Continuă organizarea proiectelor tale.">
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}

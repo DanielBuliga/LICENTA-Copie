@@ -155,7 +155,7 @@ export function ProjectsPage() {
         >
           <Box>
             <Typography sx={{ color: "text.secondary" }}>
-              Organizeaza proiectele individuale si cele de echipa intr-un singur loc.
+              Organizează proiectele individuale și cele de echipă într-un singur loc.
             </Typography>
           </Box>
           <Button
