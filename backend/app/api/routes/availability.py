@@ -33,8 +33,8 @@ def has_overlaps(items: list[tuple[int, object, object]]) -> bool:
     return False
 
 
-def override_within_windows(weekday_windows, start_time, end_time) -> bool:
-    return any(start <= start_time and end_time <= end for start, end in weekday_windows)
+def override_overlaps_windows(weekday_windows, start_time, end_time) -> bool:
+    return any(start_time < window_end and end_time > window_start for window_start, window_end in weekday_windows)
 
 
 def validate_override_duplicates(items: list[dict]) -> None:
@@ -187,10 +187,11 @@ def put_my_overrides(payload: OverridesUpdate, db: Session = Depends(get_db), cu
             raise HTTPException(status_code=400, detail="Override needs start_time and end_time")
         if o.start_time >= o.end_time:
             raise HTTPException(status_code=400, detail="Invalid override: start_time must be < end_time")
-        weekday = o.day.weekday()
-        if not override_within_windows(windows_by_weekday.get(weekday, []), o.start_time, o.end_time):
-            raise HTTPException(status_code=400, detail="Override interval must be inside an availability window for that day")
-
+        if not override_overlaps_windows(windows_by_weekday.get(o.day.weekday(), []), o.start_time, o.end_time):
+            raise HTTPException(
+                status_code=400,
+                detail="Excepția trebuie să se suprapună cu cel puțin un interval de disponibilitate al zilei",
+            )
         items.append(
             {
                 "day": o.day,

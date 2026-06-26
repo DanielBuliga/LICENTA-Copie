@@ -108,29 +108,31 @@ def build_free_slots_for_user(
 
         day_overrides = overrides_by_day.get(day, [])
 
-        if day_overrides:
-            # If any override marks full unavailable -> no slots
-            if any(o.is_unavailable for o in day_overrides):
-                continue
-
-            # Use override intervals (replace recurring windows for that day)
-            for o in day_overrides:
-                if o.start_time is None or o.end_time is None:
-                    continue
-                s = local_date_time_to_utc(day, o.start_time)
-                e = local_date_time_to_utc(day, o.end_time)
-                if s < e:
-                    free_intervals.append((s, e))
+        # A full-day override removes all recurring availability for that date.
+        if any(o.is_unavailable for o in day_overrides):
             continue
 
-        # No overrides -> use recurring windows
+        day_free_intervals: list[tuple[datetime, datetime]] = []
         for w in windows:
             if w.weekday != weekday:
                 continue
             s = local_date_time_to_utc(day, w.start_time)
             e = local_date_time_to_utc(day, w.end_time)
             if s < e:
-                free_intervals.append((s, e))
+                day_free_intervals.append((s, e))
+
+        # Partial overrides are unavailable intervals, so they are subtracted
+        # from the recurring windows instead of replacing them.
+        unavailable_intervals: list[tuple[datetime, datetime]] = []
+        for o in day_overrides:
+            if o.is_unavailable or o.start_time is None or o.end_time is None:
+                continue
+            s = local_date_time_to_utc(day, o.start_time)
+            e = local_date_time_to_utc(day, o.end_time)
+            if s < e:
+                unavailable_intervals.append((s, e))
+
+        free_intervals.extend(subtract_intervals(day_free_intervals, unavailable_intervals))
 
     free_intervals.sort(key=lambda x: x[0])
 

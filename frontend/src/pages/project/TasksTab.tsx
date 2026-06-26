@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -27,6 +28,7 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
@@ -121,6 +123,11 @@ type TaskSkillRequirement = {
 type SkillItem = {
   id: number;
   name: string;
+};
+
+type DependencyItem = {
+  predecessor_task_id: number;
+  successor_task_id: number;
 };
 
 function TaskSkillRow({ skills }: { skills: TaskSkillRequirement[] }) {
@@ -273,6 +280,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
   const [assignmentsByTask, setAssignmentsByTask] = useState<Record<number, AssignmentItem[]>>({});
   const [skillsByTask, setSkillsByTask] = useState<Record<number, TaskSkillRequirement[]>>({});
   const [skillbook, setSkillbook] = useState<SkillItem[]>([]);
+  const [dependencies, setDependencies] = useState<DependencyItem[]>([]);
   const [membersById, setMembersById] = useState<Record<number, MemberItem>>({});
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -301,6 +309,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [parentTaskId, setParentTaskId] = useState("");
+  const [predecessorTaskIds, setPredecessorTaskIds] = useState<string[]>([]);
   const [priority, setPriority] = useState<number>(3);
   const [estimateMinutes, setEstimateMinutes] = useState<number>(60);
   const [deadline, setDeadline] = useState<Dayjs | null>(
@@ -361,6 +370,43 @@ export function TasksTab({ projectId }: { projectId: number }) {
     return result;
   }, [items]);
 
+  const parentTaskIds = useMemo(
+    () => new Set(items.map((task) => task.parent_task_id).filter((id): id is number => id !== null)),
+    [items]
+  );
+
+  const dependencyOptions = useMemo(
+    () =>
+      items.filter((task) => {
+        if (editingTask && task.id === editingTask.id) return false;
+        if (parentTaskIds.has(task.id)) return false;
+        if (parentTaskId && task.id === Number(parentTaskId)) return false;
+        return true;
+      }),
+    [editingTask, items, parentTaskId, parentTaskIds]
+  );
+
+  const predecessorValue = useMemo(
+    () => predecessorTaskIds.map((id) => items.find((task) => task.id === Number(id))).filter((task): task is TaskPublic => Boolean(task)),
+    [items, predecessorTaskIds]
+  );
+
+  const dependenciesBySuccessor = useMemo(() => {
+    const result = new Map<number, DependencyItem[]>();
+    dependencies.forEach((dependency) => {
+      result.set(dependency.successor_task_id, [...(result.get(dependency.successor_task_id) ?? []), dependency]);
+    });
+    return result;
+  }, [dependencies]);
+
+  const dependenciesByPredecessor = useMemo(() => {
+    const result = new Map<number, DependencyItem[]>();
+    dependencies.forEach((dependency) => {
+      result.set(dependency.predecessor_task_id, [...(result.get(dependency.predecessor_task_id) ?? []), dependency]);
+    });
+    return result;
+  }, [dependencies]);
+
   const editingTaskNode = useMemo(
     () => (editingTask ? taskTree.find((task) => task.id === editingTask.id) : null),
     [editingTask, taskTree]
@@ -395,6 +441,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setTitle("");
     setDescription("");
     setParentTaskId("");
+    setPredecessorTaskIds([]);
     setPriority(3);
     setEstimateMinutes(60);
     setDeadline(dayjs().add(3, "day").hour(21).minute(0).second(0));
@@ -409,6 +456,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setTitle(task.title);
     setDescription(task.description ?? "");
     setParentTaskId(task.parent_task_id ? String(task.parent_task_id) : "");
+    setPredecessorTaskIds((dependenciesBySuccessor.get(task.id) ?? []).map((dependency) => String(dependency.predecessor_task_id)));
     setPriority(task.priority);
     setEstimateMinutes(task.estimate_minutes);
     setDeadline(apiDate(task.deadline));
@@ -467,12 +515,14 @@ export function TasksTab({ projectId }: { projectId: number }) {
     setError(null);
     setLoading(true);
     try {
-      const [res, skillsCatalogRes] = await Promise.all([
+      const [res, skillsCatalogRes, depsRes] = await Promise.all([
         api.get<TaskPublic[]>(`/projects/${projectId}/tasks`),
         api.get<SkillItem[]>("/skills"),
+        api.get<DependencyItem[]>(`/projects/${projectId}/dependencies`),
       ]);
       setItems(res.data);
       setSkillbook(skillsCatalogRes.data);
+      setDependencies(depsRes.data);
       const assignmentPairs = await Promise.all(
         res.data.map(async (task) => {
           const assignmentRes = await api.get<AssignmentItem[]>(`/tasks/${task.id}/assignments`);
@@ -510,6 +560,29 @@ export function TasksTab({ projectId }: { projectId: number }) {
       ...Array.from(desired)
         .filter((userId) => !current.has(userId))
         .map((userId) => api.post(`/tasks/${taskId}/assignments`, { user_id: userId, assigned_minutes: null })),
+    ]);
+  }
+
+  async function syncDependencies(taskId: number, desiredPredecessorIds: string[]) {
+    const desired = new Set(desiredPredecessorIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+    const current = new Set((dependenciesBySuccessor.get(taskId) ?? []).map((dependency) => dependency.predecessor_task_id));
+
+    await Promise.all([
+      ...Array.from(current)
+        .filter((predecessorId) => !desired.has(predecessorId))
+        .map((predecessorId) =>
+          api.delete(`/projects/${projectId}/dependencies`, {
+            data: { predecessor_task_id: predecessorId, successor_task_id: taskId },
+          })
+        ),
+      ...Array.from(desired)
+        .filter((predecessorId) => !current.has(predecessorId))
+        .map((predecessorId) =>
+          api.post(`/projects/${projectId}/dependencies`, {
+            predecessor_task_id: predecessorId,
+            successor_task_id: taskId,
+          })
+        ),
     ]);
   }
 
@@ -557,17 +630,25 @@ export function TasksTab({ projectId }: { projectId: number }) {
 
     const previousAssignedIds = new Set((editingTask ? assignmentsByTask[editingTask.id] ?? [] : []).map((assignment) => String(assignment.user_id)));
     const desiredAssignedIds = new Set(assignedUserIds);
+    const previousPredecessorIds = new Set(
+      (editingTask ? dependenciesBySuccessor.get(editingTask.id) ?? [] : []).map((dependency) => String(dependency.predecessor_task_id))
+    );
+    const desiredPredecessorIds = new Set(predecessorTaskIds);
     const assignmentsChanged =
       !isContainer &&
       (previousAssignedIds.size !== desiredAssignedIds.size ||
         Array.from(previousAssignedIds).some((userId) => !desiredAssignedIds.has(userId)));
+    const dependenciesChanged =
+      previousPredecessorIds.size !== desiredPredecessorIds.size ||
+      Array.from(previousPredecessorIds).some((taskId) => !desiredPredecessorIds.has(taskId));
     const planningFieldsChanged =
       !editingTask ||
       editingTask.priority !== priority ||
       editingTask.estimate_minutes !== estimateMinutes ||
       editingTask.parent_task_id !== (parentTaskId === "" ? null : Number(parentTaskId)) ||
       (!isContainer && apiDate(editingTask.deadline).valueOf() !== deadline.valueOf()) ||
-      assignmentsChanged;
+      assignmentsChanged ||
+      dependenciesChanged;
 
     const payload: TaskCreate = {
       title: title.trim(),
@@ -591,6 +672,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       if (!isContainer) {
         await syncAssignments(savedTask.id, assignedUserIds);
       }
+      await syncDependencies(savedTask.id, predecessorTaskIds);
 
       setOpenDialog(false);
       resetForm();
@@ -711,6 +793,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           {canManage && (
             <Button
               variant="contained"
+              startIcon={<AddRoundedIcon />}
               onClick={() => {
                 resetForm();
                 setFormError(null);
@@ -758,6 +841,14 @@ export function TasksTab({ projectId }: { projectId: number }) {
           const parentTask = t.parent_task_id ? items.find((item) => item.id === t.parent_task_id) : undefined;
           const assignments = assignmentsByTask[t.id] ?? [];
           const taskSkills = skillsByTask[t.id] ?? [];
+          const predecessorDeps = dependenciesBySuccessor.get(t.id) ?? [];
+          const successorDeps = dependenciesByPredecessor.get(t.id) ?? [];
+          const predecessorTitles = predecessorDeps
+            .map((dependency) => items.find((item) => item.id === dependency.predecessor_task_id)?.title)
+            .filter((value): value is string => Boolean(value));
+          const successorTitles = successorDeps
+            .map((dependency) => items.find((item) => item.id === dependency.successor_task_id)?.title)
+            .filter((value): value is string => Boolean(value));
           const myAssignment = me ? assignments.find((assignment) => assignment.user_id === me.id) : undefined;
           const isExpanded = expandedTaskIds.has(t.id);
           const isOverdue = !["READY_TO_CLOSE", "CLOSED"].includes(t.status) && apiDate(t.aggregateDeadline).isBefore(dayjs());
@@ -883,6 +974,38 @@ export function TasksTab({ projectId }: { projectId: number }) {
                             borderColor: (theme) => (theme.palette.mode === "dark" ? "rgba(186,230,253,0.22)" : "rgba(3,105,161,0.20)"),
                             fontWeight: 800,
                             maxWidth: { xs: "100%", md: 360 },
+                          }}
+                        />
+                      ) : null}
+                      {predecessorTitles.length > 0 ? (
+                        <Chip
+                          icon={<AccountTreeRoundedIcon />}
+                          label={`Depinde de: ${predecessorTitles.join(", ")}`}
+                          sx={{
+                            justifyContent: "flex-start",
+                            bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#F59E0B", 0.16) : "#FEF3C7"),
+                            color: (theme) => (theme.palette.mode === "dark" ? "#FDE68A" : "#92400E"),
+                            border: "1px solid",
+                            borderColor: (theme) => (theme.palette.mode === "dark" ? alpha("#FDE68A", 0.24) : alpha("#92400E", 0.18)),
+                            fontWeight: 800,
+                            "& .MuiChip-icon": { color: "inherit" },
+                            maxWidth: { xs: "100%", md: 460 },
+                          }}
+                        />
+                      ) : null}
+                      {successorTitles.length > 0 ? (
+                        <Chip
+                          icon={<AccountTreeRoundedIcon />}
+                          label={`Blochează: ${successorTitles.join(", ")}`}
+                          sx={{
+                            justifyContent: "flex-start",
+                            bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#A78BFA", 0.16) : "#EDE9FE"),
+                            color: (theme) => (theme.palette.mode === "dark" ? "#DDD6FE" : "#5B21B6"),
+                            border: "1px solid",
+                            borderColor: (theme) => (theme.palette.mode === "dark" ? alpha("#DDD6FE", 0.22) : alpha("#5B21B6", 0.18)),
+                            fontWeight: 800,
+                            "& .MuiChip-icon": { color: "inherit" },
+                            maxWidth: { xs: "100%", md: 460 },
                           }}
                         />
                       ) : null}
@@ -1194,7 +1317,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               error={title.trim().length > 200}
-              helperText={title.trim().length > 200 ? "Maximum 200 de caractere." : " "}
+              helperText={title.trim().length > 200 ? "Maximum 200 de caractere." : undefined}
               fullWidth
               autoFocus
             />
@@ -1215,7 +1338,11 @@ export function TasksTab({ projectId }: { projectId: number }) {
                 label="Task părinte"
                 value={parentTaskId}
                 onChange={(event) => {
-                  setParentTaskId(String(event.target.value));
+                  const value = String(event.target.value);
+                  setParentTaskId(value);
+                  if (value) {
+                    setPredecessorTaskIds((current) => current.filter((id) => id !== value));
+                  }
                 }}
               >
                 <MenuItem value="">Fără părinte</MenuItem>
@@ -1227,10 +1354,42 @@ export function TasksTab({ projectId }: { projectId: number }) {
                     </MenuItem>
                   ))}
               </Select>
-              <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.75 }}>
-                Alege un task părinte doar dacă activitatea curentă este o parte mai mică din acel task.
+              <Typography sx={{ color: "text.secondary", fontSize: 12.5, mt: 0.5, ml: 1.75 }}>
+                Adaugă un task părinte doar dacă activitatea curentă este o parte mai mică din acel task.
               </Typography>
             </FormControl>
+
+            <Autocomplete
+              multiple
+              options={dependencyOptions}
+              value={predecessorValue}
+              getOptionLabel={(option) => option.title}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              onChange={(_, value) => setPredecessorTaskIds(value.map((task) => String(task.id)))}
+              filterSelectedOptions
+              noOptionsText="Nu există taskuri eligibile."
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Depinde de"
+                  helperText="Alege taskurile care trebuie realizate înaintea acestui task."
+                />
+              )}
+              renderOption={(props, option) => (
+                <Box component="li" {...props} key={option.id}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontWeight: 800 }}>
+                      {option.title}
+                    </Typography>
+                    {option.parent_task_id ? (
+                      <Typography noWrap sx={{ color: "text.secondary", fontSize: 12 }}>
+                        Subtask
+                      </Typography>
+                    ) : null}
+                  </Box>
+                </Box>
+              )}
+            />
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <FormControl fullWidth>
@@ -1250,8 +1409,8 @@ export function TasksTab({ projectId }: { projectId: number }) {
                     );
                   })}
                 </Select>
-                <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.75 }}>
-                  Prioritatea ajută algoritmul să aleagă ordinea taskurilor când mai multe au deadline apropiat.
+                <Typography sx={{ color: "text.secondary", fontSize: 12.5, mt: 0.5, ml: 1.75 }}>
+                  Prioritatea ajută la stabilirea ordinii când mai multe taskuri au deadline același sau foarte apropiat.
                 </Typography>
               </FormControl>
 
@@ -1268,15 +1427,11 @@ export function TasksTab({ projectId }: { projectId: number }) {
                     ? "Taskurile părinte se estimează automat din subtaskuri."
                     : !Number.isInteger(estimateMinutes) || estimateMinutes <= 0
                       ? "Introdu un număr întreg pozitiv de minute."
-                      : " "
+                      : undefined
                 }
                 fullWidth
               />
             </Stack>
-
-            <Typography sx={{ color: "text.secondary", fontSize: 13, mt: -1 }}>
-              P5 este cea mai urgentă, P1 cea mai puțin urgentă. Prioritatea nu înlocuiește deadline-ul, doar departajează taskuri similare.
-            </Typography>
 
             <FormControl fullWidth disabled={Boolean(editingTaskNode?.hasChildren)}>
               <InputLabel id="assignees-label">Responsabili</InputLabel>
@@ -1309,8 +1464,8 @@ export function TasksTab({ projectId }: { projectId: number }) {
                   );
                 })}
               </Select>
-              <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.75 }}>
-                Owner/Admin poate asigna manual taskul. Planificarea automată păstrează asignările manuale existente.
+              <Typography sx={{ color: "text.secondary", fontSize: 12.5, mt: 0.5, ml: 1.75 }}>
+                Poate fi ales manual de owner sau stabilit prin planificare automată. Planificarea automată păstrează asignările manuale existente.
               </Typography>
             </FormControl>
 
@@ -1331,7 +1486,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                     ? "Taskurile părinte își iau deadline-ul din cel mai îndepărtat subtask."
                     : deadline && !deadline.isAfter(dayjs())
                       ? "Deadline-ul trebuie să fie în viitor."
-                      : "Poți alege ora din selector sau o poți introduce manual, de exemplu 30.06.2026 18:37.",
+                      : undefined,
                 },
               }}
               disabled={Boolean(editingTaskNode?.hasChildren)}

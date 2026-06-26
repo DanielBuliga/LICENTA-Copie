@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -42,6 +42,7 @@ type AvailabilityOverride = {
   is_unavailable: boolean;
   start_time?: string | null;
   end_time?: string | null;
+  draft_id?: string;
 };
 
 const weekdays = [
@@ -79,6 +80,26 @@ function isPastDay(day: string) {
   return day < localDateInputValue();
 }
 
+function formatDisplayDate(day: string) {
+  const parsed = dayjs(day);
+  return parsed.isValid() ? parsed.format("DD.MM.YYYY") : day;
+}
+
+function createDraftId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function sortOverrides(items: AvailabilityOverride[]) {
+  return [...items].sort((a, b) => {
+    const dayCompare = a.day.localeCompare(b.day);
+    if (dayCompare !== 0) return dayCompare;
+    if (a.is_unavailable !== b.is_unavailable) return a.is_unavailable ? -1 : 1;
+    const startCompare = (a.start_time ?? "").localeCompare(b.start_time ?? "");
+    if (startCompare !== 0) return startCompare;
+    return (a.end_time ?? "").localeCompare(b.end_time ?? "");
+  });
+}
+
 export function AvailabilityPage() {
   const { mode } = useThemeMode();
   const { confirm, confirmDialog } = useConfirmDialog();
@@ -87,10 +108,13 @@ export function AvailabilityPage() {
   const [overrides, setOverrides] = useState<AvailabilityOverride[]>([]);
   const [enabledDays, setEnabledDays] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingWindows, setSavingWindows] = useState(false);
+  const [savingOverrides, setSavingOverrides] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorDialog, setErrorDialog] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const windowEndRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const overridesListRef = useRef<HTMLDivElement | null>(null);
   const windowsByDay = useMemo(() => {
     const map = new Map<number, AvailabilityWindow[]>();
     windows.forEach((window) => {
@@ -98,6 +122,35 @@ export function AvailabilityPage() {
     });
     return map;
   }, [windows]);
+
+  function scrollOverridesToTop() {
+    window.setTimeout(() => {
+      overridesListRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    }, 0);
+  }
+
+  function scrollOverridesToBottom() {
+    window.setTimeout(() => {
+      const list = overridesListRef.current;
+      list?.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    }, 0);
+  }
+
+  const normalizeOverrides = useCallback(
+    (items: AvailabilityOverride[]) =>
+      sortOverrides(items.map((override) => ({
+        ...override,
+        draft_id: createDraftId(),
+        start_time: override.start_time ? normalizeTime(override.start_time) : null,
+        end_time: override.end_time ? normalizeTime(override.end_time) : null,
+      }))),
+    []
+  );
+
+  const loadOverrides = useCallback(async () => {
+    const overridesRes = await api.get<AvailabilityOverride[]>("/users/me/availability-overrides");
+    setOverrides(normalizeOverrides(overridesRes.data));
+  }, [normalizeOverrides]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,20 +168,14 @@ export function AvailabilityPage() {
       }));
       const initialWindows = normalized.length ? normalized : standardWorkWeek;
       setWindows(initialWindows);
-      setOverrides(
-        overridesRes.data.map((override) => ({
-          ...override,
-          start_time: override.start_time ? normalizeTime(override.start_time) : null,
-          end_time: override.end_time ? normalizeTime(override.end_time) : null,
-        }))
-      );
+      setOverrides(normalizeOverrides(overridesRes.data));
       setEnabledDays(Object.fromEntries(weekdays.map((day) => [day.value, initialWindows.some((window) => window.weekday === day.value)])));
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca disponibilitatea"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [normalizeOverrides]);
 
   useEffect(() => {
     void load();
@@ -145,6 +192,9 @@ export function AvailabilityPage() {
   function addWindow(day: number) {
     setEnabledDays((current) => ({ ...current, [day]: true }));
     setWindows((current) => [...current, { weekday: day, start_time: "09:00", end_time: "17:00" }]);
+    window.setTimeout(() => {
+      windowEndRefs.current[day]?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 0);
   }
 
   async function removeWindow(index: number) {
@@ -166,7 +216,7 @@ export function AvailabilityPage() {
   }
 
   function showValidationError(message: string) {
-    setError(message);
+    setError(null);
     setErrorDialog(message);
   }
 
@@ -193,29 +243,27 @@ export function AvailabilityPage() {
     return null;
   }
 
-  function isOverrideInsideAvailability(override: AvailabilityOverride) {
-    if (override.is_unavailable) return true;
-    if (!isValidTime(override.start_time) || !isValidTime(override.end_time)) return false;
-    if (!override.start_time || !override.end_time) return false;
+  function overrideOverlapsAvailability(override: AvailabilityOverride) {
+    if (!override.day || !override.start_time || !override.end_time) return false;
     const day = new Date(`${override.day}T00:00:00`).getDay();
     const weekday = day === 0 ? 6 : day - 1;
     const dayWindows = windows.filter((window) => enabledDays[window.weekday] && window.weekday === weekday);
-    return dayWindows.some((window) => window.start_time <= override.start_time! && override.end_time! <= window.end_time);
+    return dayWindows.some((window) => override.start_time! < window.end_time && override.end_time! > window.start_time);
   }
 
   function validateOverrides(items: AvailabilityOverride[]) {
     for (const override of items) {
       if (!override.day) return "Alege data pentru fiecare excepție.";
-      if (isPastDay(override.day)) return `Excepția din ${override.day} este în trecut. Poți seta excepții doar pentru azi sau pentru zile viitoare.`;
+      if (isPastDay(override.day)) return `Excepția din ${formatDisplayDate(override.day)} este în trecut. Poți seta excepții doar pentru azi sau pentru zile viitoare.`;
       if (override.is_unavailable) continue;
       if (!isValidTime(override.start_time) || !isValidTime(override.end_time)) {
-        return `Excepția din ${override.day} trebuie să folosească ore în format 24h: HH:mm.`;
+        return `Excepția din ${formatDisplayDate(override.day)} trebuie să folosească ore în format 24h: HH:mm.`;
       }
       if (!override.start_time || !override.end_time || override.start_time >= override.end_time) {
-        return `Intervalul excepției din ${override.day} trebuie să aibă ora de început mai mică decât ora de final.`;
+        return `Intervalul excepției din ${formatDisplayDate(override.day)} trebuie să aibă ora de început mai mică decât ora de final.`;
       }
-      if (!isOverrideInsideAvailability(override)) {
-        return `Excepția din ${override.day} trebuie să fie în interiorul unui interval de disponibilitate setat pentru ziua respectivă.`;
+      if (!overrideOverlapsAvailability(override)) {
+        return `Excepția din ${formatDisplayDate(override.day)} trebuie să se suprapună cu cel puțin un interval de disponibilitate al zilei.`;
       }
     }
     return null;
@@ -228,18 +276,19 @@ export function AvailabilityPage() {
     });
     for (const [day, dayItems] of byDay.entries()) {
       const unavailableCount = dayItems.filter((override) => override.is_unavailable).length;
-      if (unavailableCount > 1) return `Există deja o excepție de indisponibilitate pentru ${day}.`;
-      if (unavailableCount && dayItems.length > 1) return `Ziua ${day} este marcată indisponibilă, deci nu poate avea și intervale parțiale.`;
+      const displayDay = formatDisplayDate(day);
+      if (unavailableCount > 1) return `Există deja o excepție de indisponibilitate pentru ${displayDay}.`;
+      if (unavailableCount && dayItems.length > 1) return `Data de ${displayDay} este marcată ca indisponibilă, deci nu poate avea și intervale parțiale.`;
 
       const ranges = dayItems
         .filter((override) => !override.is_unavailable)
         .map((override) => ({ start: override.start_time ?? "", end: override.end_time ?? "" }))
         .sort((a, b) => a.start.localeCompare(b.start));
       const signatures = new Set(ranges.map((range) => `${range.start}-${range.end}`));
-      if (signatures.size !== ranges.length) return `Există deja o excepție cu același interval pentru ${day}.`;
+      if (signatures.size !== ranges.length) return `Există deja o excepție cu același interval pentru ${displayDay}.`;
       for (let index = 1; index < ranges.length; index += 1) {
         if (ranges[index].start < ranges[index - 1].end) {
-          return `Excepțiile din ${day} nu se pot suprapune.`;
+          return `Excepțiile din ${displayDay} nu se pot suprapune.`;
         }
       }
     }
@@ -263,7 +312,7 @@ export function AvailabilityPage() {
         })),
     };
 
-    setSaving(true);
+    setSavingWindows(true);
     setError(null);
     setSuccess(null);
 
@@ -274,7 +323,7 @@ export function AvailabilityPage() {
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut salva disponibilitatea"));
     } finally {
-      setSaving(false);
+      setSavingWindows(false);
     }
   }
 
@@ -282,16 +331,88 @@ export function AvailabilityPage() {
     setOverrides((current) => [
       ...current,
       {
+        draft_id: createDraftId(),
         day: localDateInputValue(),
         is_unavailable: true,
         start_time: "09:00",
         end_time: "17:00",
       },
     ]);
+    scrollOverridesToBottom();
   }
 
-  function updateOverride(index: number, patch: Partial<AvailabilityOverride>) {
-    setOverrides((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  function updateOverrideById(draftId: string | undefined, patch: Partial<AvailabilityOverride>) {
+    if (!draftId) return;
+    setOverrides((current) => current.map((item) => (item.draft_id === draftId ? { ...item, ...patch } : item)));
+  }
+
+  async function changeOverrideDay(draftId: string | undefined, day: string) {
+    if (!draftId) return;
+    const target = overrides.find((item) => item.draft_id === draftId);
+    if (!target) return;
+
+    if (target.is_unavailable && day) {
+      const partialsForDay = overrides.filter((item) => item.draft_id !== draftId && item.day === day && !item.is_unavailable);
+      if (partialsForDay.length > 0) {
+        const confirmed = await confirm({
+          title: "Marcare zi indisponibilă",
+          description: `Pentru ${formatDisplayDate(day)} există deja excepții pe intervale. Vrei să marchezi întreaga zi ca indisponibilă? Excepțiile parțiale pentru această zi vor fi eliminate.`,
+          confirmLabel: "Da, marchează ziua",
+          cancelLabel: "Nu, păstrează intervalele",
+          tone: "warning",
+        });
+        if (!confirmed) return;
+      }
+    }
+
+    setOverrides((current) =>
+      current.flatMap((item) => {
+        if (item.draft_id === draftId) return [{ ...item, day }];
+        if (target.is_unavailable && day && item.day === day) return [];
+        return [item];
+      })
+    );
+  }
+
+  async function setOverrideUnavailable(draftId: string | undefined, checked: boolean) {
+    if (!draftId) return;
+    const target = overrides.find((item) => item.draft_id === draftId);
+    if (!target) return;
+
+    if (checked && target.day) {
+      const partialsForDay = overrides.filter((item) => item.draft_id !== draftId && item.day === target.day && !item.is_unavailable);
+      if (partialsForDay.length > 0) {
+        const confirmed = await confirm({
+          title: "Marcare zi indisponibilă",
+          description: `Pentru ${formatDisplayDate(target.day)} există deja excepții pe intervale. Vrei să marchezi întreaga zi ca indisponibilă? Excepțiile parțiale pentru această zi vor fi eliminate.`,
+          confirmLabel: "Da, marchează ziua",
+          cancelLabel: "Nu, păstrează intervalele",
+          tone: "warning",
+        });
+        if (!confirmed) return;
+      }
+    }
+
+    setOverrides((current) => {
+      const currentTarget = current.find((item) => item.draft_id === draftId);
+      if (!currentTarget) return current;
+      const updated = {
+        ...currentTarget,
+        is_unavailable: checked,
+        start_time: checked ? currentTarget.start_time : currentTarget.start_time ?? "09:00",
+        end_time: checked ? currentTarget.end_time : currentTarget.end_time ?? "17:00",
+      };
+
+      if (!checked || !currentTarget.day) {
+        return current.map((item) => (item.draft_id === draftId ? updated : item));
+      }
+
+      return current.flatMap((item) => {
+        if (item.draft_id === draftId) return [updated];
+        if (item.day === currentTarget.day) return [];
+        return [item];
+      });
+    });
   }
 
   async function removeOverride(index: number) {
@@ -302,22 +423,23 @@ export function AvailabilityPage() {
     });
     if (!confirmed) return;
     setOverrides((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    scrollOverridesToTop();
   }
 
   async function saveOverrides() {
-    setSaving(true);
+    setSavingOverrides(true);
     setError(null);
     setSuccess(null);
 
     const validationError = validateOverrides(overrides) || validateOverrideDuplicates(overrides);
     if (validationError) {
-      setSaving(false);
+      setSavingOverrides(false);
       showValidationError(validationError);
       return;
     }
 
     const payload = {
-      overrides: overrides.map((override) => ({
+      overrides: sortOverrides(overrides).map((override) => ({
         day: override.day,
         is_unavailable: override.is_unavailable,
         start_time: override.is_unavailable ? null : override.start_time,
@@ -328,11 +450,12 @@ export function AvailabilityPage() {
     try {
       await api.put("/users/me/availability-overrides", payload);
       setSuccess("Exceptiile au fost salvate.");
-      await load();
+      await loadOverrides();
+      scrollOverridesToTop();
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut salva excepțiile"));
     } finally {
-      setSaving(false);
+      setSavingOverrides(false);
     }
   }
 
@@ -349,7 +472,7 @@ export function AvailabilityPage() {
               {errorDialog}
             </Typography>
           </DialogContent>
-          <DialogActions>
+          <DialogActions sx={{ justifyContent: "center", pb: 2.5 }}>
             <Button variant="contained" onClick={() => setErrorDialog(null)}>
               OK
             </Button>
@@ -435,6 +558,7 @@ export function AvailabilityPage() {
                         {enabled && dayWindows.length === 0 ? (
                           <Typography sx={{ color: "text.secondary", fontSize: 14 }}>Adaugă cel puțin un interval pentru această zi.</Typography>
                         ) : null}
+                        <Box ref={(node: HTMLDivElement | null) => { windowEndRefs.current[day.value] = node; }} sx={{ height: 1 }} />
                       </Stack>
                     </Box>
                   );
@@ -442,8 +566,8 @@ export function AvailabilityPage() {
               </Stack>
 
               <Stack direction="row" spacing={1} sx={{ mt: 2, flexShrink: 0, justifyContent: "flex-end" }}>
-                <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={save} disabled={saving}>
-                  {saving ? "Se salvează..." : "Salvează"}
+                <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={save} disabled={savingWindows}>
+                  {savingWindows ? "Se salvează..." : "Salvează"}
                 </Button>
               </Stack>
             </CardContent>
@@ -456,10 +580,10 @@ export function AvailabilityPage() {
                 <Typography variant="h6">Excepții</Typography>
               </Stack>
 
-              <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5 }}>
-                {overrides.map((override, index) => (
+              <Stack ref={overridesListRef} spacing={1.5} sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5, alignItems: "stretch", justifyContent: "flex-start" }}>
+                {overrides.map((override) => (
                   <Box
-                    key={`${override.day}-${index}`}
+                    key={override.draft_id ?? `${override.day}-${override.start_time}-${override.end_time}`}
                     sx={{
                       p: 2,
                       border: "1px solid",
@@ -477,7 +601,7 @@ export function AvailabilityPage() {
                         <DatePicker
                           label="Zi"
                           value={override.day ? dayjs(override.day) : null}
-                          onChange={(value) => updateOverride(index, { day: value?.format("YYYY-MM-DD") ?? "" })}
+                          onChange={(value) => void changeOverrideDay(override.draft_id, value?.format("YYYY-MM-DD") ?? "")}
                           minDate={dayjs(localDateInputValue())}
                           format="DD.MM.YYYY"
                           slotProps={{
@@ -494,14 +618,14 @@ export function AvailabilityPage() {
                             control={
                               <Switch
                                 checked={override.is_unavailable}
-                                onChange={(event) => updateOverride(index, { is_unavailable: event.target.checked })}
+                                onChange={(event) => void setOverrideUnavailable(override.draft_id, event.target.checked)}
                               />
                             }
                             label={<Typography sx={{ fontWeight: 800 }}>Zi indisponibila</Typography>}
                             labelPlacement="start"
                             sx={{ m: 0 }}
                           />
-                          <IconButton color="error" onClick={() => removeOverride(index)} aria-label="Sterge exceptia">
+                          <IconButton color="error" onClick={() => removeOverride(overrides.findIndex((item) => item.draft_id === override.draft_id))} aria-label="Sterge exceptia">
                             <DeleteOutlineRoundedIcon />
                           </IconButton>
                         </Stack>
@@ -512,7 +636,7 @@ export function AvailabilityPage() {
                           label="De la"
                           value={override.start_time ?? "09:00"}
                           disabled={override.is_unavailable}
-                          onChange={(event) => updateOverride(index, { start_time: event.target.value })}
+                          onChange={(event) => updateOverrideById(override.draft_id, { start_time: event.target.value })}
                           placeholder="09:00"
                           error={!override.is_unavailable && Boolean(override.start_time) && !isValidTime(override.start_time)}
                           helperText={!override.is_unavailable && Boolean(override.start_time) && !isValidTime(override.start_time) ? "Format HH:mm" : " "}
@@ -524,7 +648,7 @@ export function AvailabilityPage() {
                           label="Pana la"
                           value={override.end_time ?? "17:00"}
                           disabled={override.is_unavailable}
-                          onChange={(event) => updateOverride(index, { end_time: event.target.value })}
+                          onChange={(event) => updateOverrideById(override.draft_id, { end_time: event.target.value })}
                           placeholder="17:00"
                           error={!override.is_unavailable && Boolean(override.end_time) && !isValidTime(override.end_time)}
                           helperText={!override.is_unavailable && Boolean(override.end_time) && !isValidTime(override.end_time) ? "Format HH:mm" : " "}
@@ -547,7 +671,7 @@ export function AvailabilityPage() {
                 <Button variant="outlined" startIcon={<AddRoundedIcon />} onClick={addOverride}>
                   Adaugă excepție
                 </Button>
-                <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={saveOverrides} disabled={saving}>
+                <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={saveOverrides} disabled={savingOverrides}>
                   Salvează
                 </Button>
               </Stack>

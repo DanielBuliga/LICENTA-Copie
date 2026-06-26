@@ -54,19 +54,23 @@ def _block_within_availability(
     end_time = local_end.time().replace(second=0, microsecond=0)
     day_overrides = overrides_by_day.get(day, [])
 
-    if day_overrides:
-        if any(is_unavailable for is_unavailable, _, _ in day_overrides):
-            return False
-        return any(
-            override_start is not None
-            and override_end is not None
-            and override_start <= start_time
-            and end_time <= override_end
-            for _, override_start, override_end in day_overrides
-        )
-
     weekday_windows = windows_by_weekday.get(day.weekday(), [])
-    return any(start <= start_time and end_time <= end for start, end in weekday_windows)
+    if not any(start <= start_time and end_time <= end for start, end in weekday_windows):
+        return False
+
+    if not day_overrides:
+        return True
+
+    if any(is_unavailable for is_unavailable, _, _ in day_overrides):
+        return False
+
+    return not any(
+        override_start is not None
+        and override_end is not None
+        and start_time < override_end
+        and end_time > override_start
+        for _, override_start, override_end in day_overrides
+    )
 
 
 def find_availability_conflict_blocks(

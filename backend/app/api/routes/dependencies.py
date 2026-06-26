@@ -22,7 +22,7 @@ def get_deps(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect")
 
     return list_dependencies(db, project_id)
 
@@ -35,20 +35,20 @@ def add_dep(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect")
 
     require_roles(db, project_id, current_user.id, {"OWNER", "ADMIN"})
 
     if payload.predecessor_task_id == payload.successor_task_id:
-        raise HTTPException(status_code=400, detail="Invalid dependency (same task)")
+        raise HTTPException(status_code=400, detail="Un task nu poate depinde de el însuși")
 
     pred = get_task(db, payload.predecessor_task_id)
     succ = get_task(db, payload.successor_task_id)
     if not pred or not succ:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit")
 
     if pred.project_id != project_id or succ.project_id != project_id:
-        raise HTTPException(status_code=400, detail="Tasks must be in same project")
+        raise HTTPException(status_code=400, detail="Taskurile trebuie să aparțină aceluiași proiect")
 
     # Load all edges in this project
     existing = list_dependencies(db, project_id)
@@ -56,10 +56,10 @@ def add_dep(
 
     # Do not allow duplicates
     if (payload.predecessor_task_id, payload.successor_task_id) in edges:
-        raise HTTPException(status_code=400, detail="Dependency already exists")
+        raise HTTPException(status_code=400, detail="Această dependență există deja")
 
     if would_create_cycle(edges, (payload.predecessor_task_id, payload.successor_task_id)):
-        raise HTTPException(status_code=400, detail="Dependency would create a cycle")
+        raise HTTPException(status_code=400, detail="Dependența ar crea un ciclu între taskuri")
 
     dependency = create_dependency(
         db,
@@ -98,7 +98,7 @@ def remove_dep(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect")
 
     require_roles(db, project_id, current_user.id, {"OWNER", "ADMIN"})
 
