@@ -1,16 +1,35 @@
 import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import CORS_ORIGINS, NOTIFICATION_WORKER_ENABLED
 from app.services.notification_worker import deadline_notification_loop
 
-from fastapi.middleware.cors import CORSMiddleware
-
-app = FastAPI(title="Licenta Planner API")
-
 deadline_worker_task: asyncio.Task | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global deadline_worker_task
+    if NOTIFICATION_WORKER_ENABLED and deadline_worker_task is None:
+        deadline_worker_task = asyncio.create_task(deadline_notification_loop())
+
+    try:
+        yield
+    finally:
+        if deadline_worker_task is not None:
+            deadline_worker_task.cancel()
+            try:
+                await deadline_worker_task
+            except asyncio.CancelledError:
+                pass
+            deadline_worker_task = None
+
+
+app = FastAPI(title="Licenta SmartPlanner API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,19 +42,5 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-@app.on_event("startup")
-async def start_notification_worker():
-    global deadline_worker_task
-    if NOTIFICATION_WORKER_ENABLED and deadline_worker_task is None:
-        deadline_worker_task = asyncio.create_task(deadline_notification_loop())
-
-
-@app.on_event("shutdown")
-async def stop_notification_worker():
-    global deadline_worker_task
-    if deadline_worker_task is not None:
-        deadline_worker_task.cancel()
-        deadline_worker_task = None
 
 app.include_router(api_router)
