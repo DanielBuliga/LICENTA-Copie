@@ -10,7 +10,7 @@ import { AuthLayout } from "../components/AuthLayout";
 
 function friendlyMessage(raw: string): string {
   const s = raw.toLowerCase();
-  if (s.includes("invalid") || s.includes("incorrect") || s.includes("wrong")) {
+  if (s.includes("invalid") || s.includes("incorrect") || s.includes("wrong") || s.includes("incorect")) {
     return "Email sau parolă incorecte.";
   }
   if (s.includes("required") || s.includes("missing")) {

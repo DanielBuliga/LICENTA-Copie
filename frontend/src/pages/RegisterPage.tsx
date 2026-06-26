@@ -8,7 +8,7 @@ import { AuthLayout } from "../components/AuthLayout";
 
 function friendlyMessage(raw: string): string {
   const s = raw.toLowerCase();
-  if (s.includes("already") && s.includes("used")) {
+  if ((s.includes("already") && s.includes("used")) || (s.includes("exist") && s.includes("cont"))) {
     return "Există deja un cont cu această adresă de email.";
   }
   if (s.includes("valid email") || s.includes("email")) {

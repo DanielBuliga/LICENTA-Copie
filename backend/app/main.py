@@ -3,7 +3,7 @@ import asyncio
 from fastapi import FastAPI
 
 from app.api.router import api_router
-from app.core.config import NOTIFICATION_WORKER_ENABLED
+from app.core.config import CORS_ORIGINS, NOTIFICATION_WORKER_ENABLED
 from app.services.notification_worker import deadline_notification_loop
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +14,7 @@ deadline_worker_task: asyncio.Task | None = None
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-       "*"
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

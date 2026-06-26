@@ -1,6 +1,6 @@
-from pathlib import Path
 from email import policy
 from email.parser import BytesParser
+from pathlib import Path
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -30,6 +30,7 @@ ALLOWED_DOCUMENT_EXTENSIONS = {
     ".xlsx",
     ".pptx",
 }
+ZIP_BASED_DOCUMENT_EXTENSIONS = {".docx", ".xlsx", ".pptx"}
 
 
 def safe_filename(filename: str) -> str:
@@ -50,9 +51,27 @@ def validate_document_file(file_name: str, file_bytes: bytes) -> None:
             status_code=400,
             detail=f"Tip de fișier nepermis. Sunt acceptate: {allowed}.",
         )
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Fișierul încărcat este gol.")
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         max_mb = max(1, MAX_UPLOAD_BYTES // (1024 * 1024))
         raise HTTPException(status_code=413, detail=f"Fișierul este prea mare. Dimensiunea maximă este {max_mb} MB.")
+
+    if extension == ".pdf" and not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="Fișierul PDF nu pare valid.")
+    if extension == ".png" and not file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=400, detail="Fișierul PNG nu pare valid.")
+    if extension in {".jpg", ".jpeg"} and not file_bytes.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(status_code=400, detail="Fișierul JPEG nu pare valid.")
+    if extension in ZIP_BASED_DOCUMENT_EXTENSIONS and not file_bytes.startswith(b"PK"):
+        raise HTTPException(status_code=400, detail="Documentul încărcat nu pare valid.")
+    if extension == ".doc" and not file_bytes.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        raise HTTPException(status_code=400, detail="Documentul Word încărcat nu pare valid.")
+    if extension in {".txt", ".md"}:
+        try:
+            file_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Fișierul text trebuie să fie salvat în format UTF-8.")
 
 
 def find_stored_document(document_id: int) -> Path | None:
@@ -64,7 +83,7 @@ def find_stored_document(document_id: int) -> Path | None:
 
 def parse_multipart_upload(content_type: str | None, body: bytes) -> tuple[str, bytes, dict[str, str]]:
     if not content_type or "multipart/form-data" not in content_type:
-        raise HTTPException(status_code=400, detail="Expected multipart/form-data")
+        raise HTTPException(status_code=400, detail="Cererea trebuie să fie de tip multipart/form-data.")
     if len(body) > MAX_UPLOAD_BYTES:
         max_mb = max(1, MAX_UPLOAD_BYTES // (1024 * 1024))
         raise HTTPException(status_code=413, detail=f"Fișierul este prea mare. Dimensiunea maximă este {max_mb} MB.")
