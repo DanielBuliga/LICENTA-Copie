@@ -66,8 +66,13 @@ def get_task(db: Session, task_id: int) -> Task | None:
     return db.query(Task).filter(Task.id == task_id).first()
 
 
-def list_tasks(db: Session, project_id: int) -> list[Task]:
-    return db.query(Task).filter(Task.project_id == project_id).order_by(Task.deadline.asc()).all()
+def list_tasks(db: Session, project_id: int, offset: int = 0, limit: int | None = None) -> list[Task]:
+    query = db.query(Task).filter(Task.project_id == project_id).order_by(Task.deadline.asc())
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    return query.all()
 
 
 def list_subtasks(db: Session, task_id: int) -> list[Task]:

@@ -33,12 +33,18 @@ def log_project_activity(
     return row
 
 
-def list_project_activities(db: Session, project_id: int, limit: int = 200) -> list[tuple[ProjectActivity, User | None]]:
+def list_project_activities(
+    db: Session,
+    project_id: int,
+    offset: int = 0,
+    limit: int = 200,
+) -> list[tuple[ProjectActivity, User | None]]:
     return (
         db.query(ProjectActivity, User)
         .outerjoin(User, User.id == ProjectActivity.actor_id)
         .filter(ProjectActivity.project_id == project_id)
         .order_by(ProjectActivity.created_at.desc(), ProjectActivity.id.desc())
+        .offset(offset)
         .limit(limit)
         .all()
     )

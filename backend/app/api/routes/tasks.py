@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
@@ -63,17 +63,23 @@ def _validate_future_deadline(deadline: datetime, *, old_deadline: datetime | No
 
 @router.get("/users/me/tasks", response_model=list[MyTaskPublic])
 def get_my_assigned_tasks(
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    rows = (
+    query = (
         db.query(Task, TaskAssignment, Project)
         .join(TaskAssignment, TaskAssignment.task_id == Task.id)
         .join(Project, Project.id == Task.project_id)
         .filter(TaskAssignment.user_id == current_user.id)
         .order_by(Task.deadline.asc())
-        .all()
     )
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    rows = query.all()
     parent_ids = {task.parent_task_id for task, _, _ in rows if task.parent_task_id is not None}
     parents_by_id = {
         parent.id: parent
@@ -171,13 +177,15 @@ def create_task_in_project(
 @router.get("/projects/{project_id}/tasks", response_model=list[TaskPublic])
 def get_tasks_for_project(
     project_id: int,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a project member")
 
-    return list_tasks(db, project_id)
+    return list_tasks(db, project_id, offset=offset, limit=limit)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskPublic)

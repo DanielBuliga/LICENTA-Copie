@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth_deps import get_current_user
@@ -29,13 +29,15 @@ def prefs_to_public(prefs) -> NotificationPreferencePublic:
 @router.get("/notifications", response_model=list[NotificationPublic])
 def list_notifications(
     unread_only: bool = False,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     query = db.query(Notification).filter(Notification.user_id == current_user.id)
     if unread_only:
         query = query.filter(Notification.is_read == False)  # noqa: E712
-    return query.order_by(Notification.created_at.desc()).limit(50).all()
+    return query.order_by(Notification.created_at.desc()).offset(offset).limit(limit).all()
 
 
 @router.get("/notifications/unread-count", response_model=UnreadCount)
