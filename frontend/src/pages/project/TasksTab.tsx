@@ -934,22 +934,13 @@ export function TasksTab({ projectId }: { projectId: number }) {
                   <Box
                     sx={{
                       display: "grid",
-                      gridTemplateColumns: "1fr",
+                      gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) auto" },
                       alignItems: "center",
-                      gap: 1.5,
+                      gap: 1,
+                      minWidth: 0,
                     }}
                   >
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      useFlexGap
-                      sx={{
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        minWidth: 0,
-                      }}
-                    >
+                    <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, minWidth: 0 }}>
                       <Chip
                         icon={<FlagRoundedIcon />}
                         label={`Prioritate: P${t.priority} - ${priority.label}`}
@@ -1089,8 +1080,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
                           }}
                         />
                       )}
+                    </Box>
 
-                      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center", ml: "auto" }}>
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", minWidth: 0, alignSelf: "end" }}>
                         {!t.hasChildren && myRole === "OWNER" && t.status === "READY_TO_CLOSE" ? (
                           <Button
                             size="small"
@@ -1135,7 +1127,6 @@ export function TasksTab({ projectId }: { projectId: number }) {
                             <MoreVertRoundedIcon />
                           </IconButton>
                         ) : null}
-                      </Stack>
                     </Stack>
                   </Box>
                 </Stack>

@@ -4,6 +4,7 @@ import {
   Badge,
   Box,
   Button,
+  Chip,
   Divider,
   Drawer,
   IconButton,
@@ -28,6 +29,7 @@ import AccountCircleRoundedIcon from "@mui/icons-material/AccountCircleRounded";
 import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
 import DoneAllRoundedIcon from "@mui/icons-material/DoneAllRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/api";
 import { clearToken, getToken } from "../api/auth";
@@ -56,6 +58,10 @@ type NotificationItem = {
   created_at: string;
 };
 
+type UnreadCount = {
+  unread: number;
+};
+
 const drawerWidth = 264;
 const headerHeight = 82;
 const accent = "#7E879F";
@@ -72,6 +78,24 @@ const navItems = [
   { label: "Mesagerie", path: "/messages", icon: <MailOutlineRoundedIcon /> },
 ];
 
+const planAttentionNotificationTypes = new Set([
+  "PLAN_PROBLEMS",
+  "PLAN_IMPACT",
+  "MEMBER_INACTIVE_REPLAN",
+  "MISSED_PLANNED_WORK",
+  "TASK_CHANGED",
+  "TASK_DELETED",
+  "TASK_UNASSIGNED",
+]);
+
+function needsPlanAttention(notification: NotificationItem) {
+  return planAttentionNotificationTypes.has(notification.type);
+}
+
+function opensProjectPlan(notification: NotificationItem) {
+  return needsPlanAttention(notification) || notification.type === "TASK_REPLANNED";
+}
+
 let cachedUserToken: string | null = null;
 let cachedCurrentUser: CurrentUser | null = null;
 
@@ -85,8 +109,8 @@ export function AppLayout({ title, children }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsAnchor, setNotificationsAnchor] = useState<null | HTMLElement>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notificationsRefreshTimer = useRef<number | null>(null);
-  const unreadCount = notifications.filter((notification) => !notification.is_read).length;
 
   const loadUser = useCallback(async () => {
     if (!token) return;
@@ -110,10 +134,15 @@ export function AppLayout({ title, children }: Props) {
   const loadNotifications = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await api.get<NotificationItem[]>("/notifications");
+      const [res, countRes] = await Promise.all([
+        api.get<NotificationItem[]>("/notifications"),
+        api.get<UnreadCount>("/notifications/unread-count"),
+      ]);
       setNotifications(res.data);
+      setUnreadCount(countRes.data.unread);
     } catch {
       setNotifications([]);
+      setUnreadCount(0);
     }
   }, [token]);
 
@@ -161,6 +190,7 @@ export function AppLayout({ title, children }: Props) {
     try {
       await api.post("/notifications/mark-all-read");
       setNotifications((current) => current.map((notification) => ({ ...notification, is_read: true })));
+      setUnreadCount(0);
     } catch {
       void loadNotifications();
     }
@@ -173,12 +203,17 @@ export function AppLayout({ title, children }: Props) {
         setNotifications((current) =>
           current.map((item) => (item.id === notification.id ? { ...item, is_read: true } : item))
         );
+        setUnreadCount((current) => Math.max(current - 1, 0));
       } catch {
         void loadNotifications();
       }
     }
 
     setNotificationsAnchor(null);
+    if (opensProjectPlan(notification) && notification.project_id) {
+      nav(`/projects/${notification.project_id}?tab=plan`);
+      return;
+    }
     if (notification.task_id) {
       nav(`/activities/${notification.task_id}`);
       return;
@@ -453,46 +488,78 @@ export function AppLayout({ title, children }: Props) {
           <Divider />
           <Stack sx={{ maxHeight: 420, overflowY: "auto" }}>
             {notifications.length ? (
-              notifications.map((notification) => (
-                <Button
-                  key={notification.id}
-                  onClick={() => void openNotification(notification)}
-                  sx={{
-                    display: "block",
-                    textAlign: "left",
-                    color: "text.primary",
-                    borderRadius: 0,
-                    px: 2,
-                    py: 1.5,
-                    bgcolor: notification.is_read ? "background.paper" : isDark ? "rgba(126,135,159,0.22)" : "#F3F6FF",
-                    borderBottom: "1px solid",
-                    borderColor: "divider",
-                    "&:hover": { bgcolor: notification.is_read ? (isDark ? "rgba(255,255,255,0.06)" : "#F8FAFC") : (isDark ? "rgba(126,135,159,0.30)" : "#EEF2FF") },
-                  }}
-                >
-                  <Stack direction="row" spacing={1.25} sx={{ alignItems: "flex-start" }}>
-                    <Box
-                      sx={{
-                        width: 9,
-                        height: 9,
-                        borderRadius: "50%",
-                        bgcolor: notification.is_read ? "transparent" : accent,
-                        mt: 0.75,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 900, fontSize: 14 }}>{notification.title}</Typography>
-                      <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.25 }}>
-                        {formatApiDatesInText(notification.body)}
-                      </Typography>
-                      <Typography sx={{ color: "text.disabled", fontSize: 12, mt: 0.75 }}>
-                        {apiDate(notification.created_at).format("DD MMM YYYY, HH:mm")}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </Button>
-              ))
+              notifications.map((notification) => {
+                const planAttention = needsPlanAttention(notification);
+                const unreadBg = planAttention
+                  ? isDark ? "rgba(245,158,11,0.18)" : "#FFF7ED"
+                  : isDark ? "rgba(126,135,159,0.22)" : "#F3F6FF";
+                const readBg = planAttention
+                  ? isDark ? "rgba(245,158,11,0.10)" : "#FFFBF5"
+                  : "background.paper";
+                const hoverBg = planAttention
+                  ? isDark ? "rgba(245,158,11,0.24)" : "#FFEDD5"
+                  : notification.is_read ? (isDark ? "rgba(255,255,255,0.06)" : "#F8FAFC") : (isDark ? "rgba(126,135,159,0.30)" : "#EEF2FF");
+
+                return (
+                  <Button
+                    key={notification.id}
+                    onClick={() => void openNotification(notification)}
+                    sx={{
+                      display: "block",
+                      textAlign: "left",
+                      color: "text.primary",
+                      borderRadius: 0,
+                      px: 2,
+                      py: 1.5,
+                      bgcolor: notification.is_read ? readBg : unreadBg,
+                      borderBottom: "1px solid",
+                      borderColor: planAttention ? (isDark ? "rgba(245,158,11,0.28)" : "#FED7AA") : "divider",
+                      "&:hover": { bgcolor: hoverBg },
+                    }}
+                  >
+                    <Stack direction="row" spacing={1.25} sx={{ alignItems: "flex-start" }}>
+                      <Box
+                        sx={{
+                          width: planAttention ? 22 : 9,
+                          height: planAttention ? 22 : 9,
+                          borderRadius: "50%",
+                          bgcolor: planAttention ? (isDark ? "rgba(245,158,11,0.18)" : "#FEF3C7") : notification.is_read ? "transparent" : accent,
+                          color: planAttention ? "#D97706" : "inherit",
+                          mt: planAttention ? 0.1 : 0.75,
+                          flexShrink: 0,
+                          display: "grid",
+                          placeItems: "center",
+                        }}
+                      >
+                        {planAttention ? <WarningAmberRoundedIcon sx={{ fontSize: 15 }} /> : null}
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexWrap: "wrap", gap: 0.75 }}>
+                          <Typography sx={{ fontWeight: 900, fontSize: 14 }}>{notification.title}</Typography>
+                          {planAttention ? (
+                            <Chip
+                              size="small"
+                              label="Verifică planul"
+                              sx={{
+                                height: 22,
+                                fontWeight: 900,
+                                bgcolor: isDark ? "rgba(245,158,11,0.22)" : "#FED7AA",
+                                color: isDark ? "#FDBA74" : "#9A3412",
+                              }}
+                            />
+                          ) : null}
+                        </Stack>
+                        <Typography sx={{ color: "text.secondary", fontSize: 13, mt: 0.25 }}>
+                          {formatApiDatesInText(notification.body)}
+                        </Typography>
+                        <Typography sx={{ color: "text.disabled", fontSize: 12, mt: 0.75 }}>
+                          {apiDate(notification.created_at).format("DD MMM YYYY, HH:mm")}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Button>
+                );
+              })
             ) : (
               <Typography sx={{ color: "text.secondary", textAlign: "center", py: 5 }}>
                 Nu ai notificări momentan.

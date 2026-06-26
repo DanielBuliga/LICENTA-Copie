@@ -64,7 +64,7 @@ def get_or_create_preferences(db: Session, user_id: int) -> NotificationPreferen
 
 
 def should_send_for_type(prefs: NotificationPreference, notification_type: str) -> bool:
-    if notification_type in {"PROJECT_MEMBER_ADDED", "MEMBER_INACTIVE_REPLAN", "PLAN_PROBLEMS", "PLAN_IMPACT"}:
+    if notification_type in {"PROJECT_MEMBER_ADDED", "MEMBER_INACTIVE_REPLAN", "PLAN_PROBLEMS", "PLAN_IMPACT", "MISSED_PLANNED_WORK"}:
         return prefs.project_events_enabled
     if notification_type in {"TASK_ASSIGNED", "TASK_CHANGED", "TASK_REPLANNED", "TASK_UNASSIGNED", "TASK_DELETED"}:
         return prefs.assignment_events_enabled
@@ -619,4 +619,80 @@ def send_scheduled_block_reminders(db: Session) -> int:
         )
         if created:
             count += 1
+    return count
+
+
+def send_missed_planned_work_notifications(db: Session) -> int:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    rows = (
+        db.query(ScheduledBlock, TaskAssignment, Task, Project)
+        .join(Task, Task.id == ScheduledBlock.task_id)
+        .join(Project, Project.id == ScheduledBlock.project_id)
+        .join(
+            TaskAssignment,
+            (TaskAssignment.task_id == ScheduledBlock.task_id)
+            & (TaskAssignment.user_id == ScheduledBlock.user_id),
+        )
+        .join(
+            ProjectMember,
+            (ProjectMember.project_id == ScheduledBlock.project_id)
+            & (ProjectMember.user_id == ScheduledBlock.user_id),
+        )
+        .filter(
+            ScheduledBlock.block_status == "PLANNED",
+            ScheduledBlock.end_datetime < now,
+            TaskAssignment.member_status != "DONE",
+            Task.status.notin_(["READY_TO_CLOSE", "CLOSED"]),
+            ProjectMember.status == "ACTIVE",
+        )
+        .all()
+    )
+
+    count = 0
+    for block, assignment, task, project in rows:
+        created = create_notification(
+            db,
+            user_id=assignment.user_id,
+            notification_type="MISSED_PLANNED_WORK",
+            title=f"Bloc planificat nefinalizat: {task.title}",
+            body=(
+                f"Taskul {task.title} din proiectul {project.title} avea un bloc planificat "
+                f"intre {block.start_datetime} si {block.end_datetime}, dar nu a fost marcat ca finalizat."
+            ),
+            project_id=task.project_id,
+            task_id=task.id,
+            event_key=f"block:{block.id}:missed:{assignment.user_id}",
+            email=False,
+        )
+        if created:
+            count += 1
+
+        managers = (
+            db.query(ProjectMember)
+            .filter(
+                ProjectMember.project_id == task.project_id,
+                ProjectMember.role.in_(["OWNER", "ADMIN"]),
+                ProjectMember.status == "ACTIVE",
+                ProjectMember.user_id != assignment.user_id,
+            )
+            .all()
+        )
+        for manager in managers:
+            created = create_notification(
+                db,
+                user_id=manager.user_id,
+                notification_type="MISSED_PLANNED_WORK",
+                title=f"Bloc planificat nefinalizat: {task.title}",
+                body=(
+                    f"Taskul {task.title} din proiectul {project.title} avea un bloc planificat "
+                    f"intre {block.start_datetime} si {block.end_datetime}. Verifica tabul Probleme si ruleaza Replanificare daca este necesar."
+                ),
+                project_id=task.project_id,
+                task_id=task.id,
+                event_key=f"block:{block.id}:missed:manager:{manager.user_id}",
+                email=False,
+            )
+            if created:
+                count += 1
+
     return count

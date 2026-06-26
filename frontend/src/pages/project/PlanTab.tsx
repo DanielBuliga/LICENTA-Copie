@@ -1,8 +1,9 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Box, Button, Card, CardContent, Chip, Divider, LinearProgress, Stack, TextField, Typography } from "@mui/material";
-import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Alert, Box, Button, Card, CardContent, Chip, Divider, IconButton, LinearProgress, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import dayjs, { Dayjs } from "dayjs";
@@ -64,10 +65,17 @@ function formatRoWeekdayShort(value: Dayjs) {
   return RO_WEEKDAYS_SHORT[value.day()];
 }
 
+function mondayOf(value: Dayjs) {
+  return value.startOf("week").add(1, "day");
+}
+
 export function PlanTab({ projectId }: { projectId: number }) {
   const { confirm, confirmDialog } = useConfirmDialog();
-  const [startDay, setStartDay] = useState(dayjs().format("YYYY-MM-DD"));
-  const [calendarWeekStart, setCalendarWeekStart] = useState(dayjs().startOf("week").add(1, "day"));
+  const [searchParams] = useSearchParams();
+  const initialDay = searchParams.get("week") ?? dayjs().format("YYYY-MM-DD");
+  const initialWeek = apiDate(`${initialDay}T00:00:00`);
+  const [startDay, setStartDay] = useState(initialDay);
+  const [calendarWeekStart, setCalendarWeekStart] = useState(mondayOf(initialWeek.isValid() ? initialWeek : dayjs()));
   const [horizonDays, setHorizonDays] = useState(7);
   const [blocks, setBlocks] = useState<ScheduledBlock[]>([]);
   const [tasksById, setTasksById] = useState<Record<number, TaskItem>>({});
@@ -77,6 +85,7 @@ export function PlanTab({ projectId }: { projectId: number }) {
   const [lastAction, setLastAction] = useState<"generate" | "replan" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoPositionedWeekRef = useRef(false);
 
   const dateRange = useMemo(() => {
     const from = dayjs(startDay).startOf("day");
@@ -99,16 +108,27 @@ export function PlanTab({ projectId }: { projectId: number }) {
         api.get<MeResponse>("/users/me"),
       ]);
       setBlocks(planRes.data);
+      if (!searchParams.get("week") && !autoPositionedWeekRef.current && planRes.data.length) {
+        const firstBlock = [...planRes.data].sort((a, b) => apiDate(a.start_datetime).valueOf() - apiDate(b.start_datetime).valueOf())[0];
+        setCalendarWeekStart(mondayOf(apiDate(firstBlock.start_datetime)));
+        autoPositionedWeekRef.current = true;
+      }
       setTasksById(Object.fromEntries(tasksRes.data.map((task) => [task.id, task])));
       setMembersById(Object.fromEntries(membersRes.data.map((member) => [member.user_id, member])));
       const currentMember = membersRes.data.find((member) => member.user_id === meRes.data.id);
       setMyRole(currentMember?.role ?? null);
+      return planRes.data;
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca planul"));
+      return [];
     } finally {
       setLoading(false);
     }
-  }, [dateRange.from, dateRange.to, projectId]);
+  }, [dateRange.from, dateRange.to, projectId, searchParams]);
+
+  useEffect(() => {
+    autoPositionedWeekRef.current = false;
+  }, [projectId]);
 
   useEffect(() => {
     void load();
@@ -122,6 +142,16 @@ export function PlanTab({ projectId }: { projectId: number }) {
   }, [result]);
 
   const canManagePlan = myRole === "OWNER" || myRole === "ADMIN";
+
+  useEffect(() => {
+    const weekParam = searchParams.get("week");
+    if (!weekParam) return;
+    const parsed = apiDate(`${weekParam}T00:00:00`);
+    if (parsed.isValid()) {
+      setStartDay(weekParam);
+      setCalendarWeekStart(mondayOf(parsed));
+    }
+  }, [searchParams]);
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, index) => calendarWeekStart.add(index, "day"));
@@ -186,7 +216,11 @@ export function PlanTab({ projectId }: { projectId: number }) {
       const res = await api.post<GenerateResponse>(endpoint, payload);
       setResult(res.data);
       setLastAction(mode);
-      await load();
+      const nextBlocks = await load();
+      const firstBlock = [...nextBlocks].sort((a, b) => apiDate(a.start_datetime).valueOf() - apiDate(b.start_datetime).valueOf())[0];
+      if (firstBlock) {
+        setCalendarWeekStart(mondayOf(apiDate(firstBlock.start_datetime)));
+      }
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, mode === "generate" ? "Nu am putut genera planul" : "Nu am putut replanifica"));
     } finally {
@@ -212,37 +246,55 @@ export function PlanTab({ projectId }: { projectId: number }) {
       {canManagePlan ? (
       <Card>
         <CardContent sx={{ p: 3 }}>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Generează plan reconstruiește tot planul în intervalul ales. Replanifică mută doar taskurile cu probleme și păstrează blocurile valide deja stabilite.
-          </Alert>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ alignItems: { xs: "stretch", md: "center" } }}>
-            <TextField
-              label="Start"
-              type="date"
-              value={startDay}
-              onChange={(event) => setStartDay(event.target.value)}
-              error={dayjs(startDay).isBefore(dayjs(), "day")}
-              helperText={dayjs(startDay).isBefore(dayjs(), "day") ? "Alege o dată de azi sau din viitor." : " "}
-              slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: dayjs().format("YYYY-MM-DD") } }}
-            />
-            <TextField
-              label="Perioadă planificare (zile)"
-              type="number"
-              value={horizonDays}
-              onChange={(event) => setHorizonDays(Number(event.target.value))}
-              helperText="Planifică următoarele X zile"
-              slotProps={{ htmlInput: { min: 1, max: 30 } }}
-            />
-            <Button variant="contained" startIcon={<AutoAwesomeRoundedIcon />} onClick={() => void runPlanner("generate")} disabled={loading}>
-              Generează plan
-            </Button>
-            <Button variant="outlined" onClick={() => void runPlanner("replan")} disabled={loading}>
-              Replanifică
-            </Button>
-            <Button variant="outlined" onClick={load} disabled={loading}>
-              Reîncarcă
-            </Button>
-          </Stack>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) auto" }, gap: 1.5, alignItems: "flex-start" }}>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ alignItems: { xs: "stretch", md: "flex-start" }, minWidth: 0, flexWrap: "wrap" }}>
+              <TextField
+                label="Start"
+                type="date"
+                value={startDay}
+                onChange={(event) => setStartDay(event.target.value)}
+                error={dayjs(startDay).isBefore(dayjs(), "day")}
+                helperText={dayjs(startDay).isBefore(dayjs(), "day") ? "Alege o dată de azi sau din viitor." : " "}
+                slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: dayjs().format("YYYY-MM-DD") } }}
+              />
+              <TextField
+                label="Perioadă planificare (zile)"
+                type="number"
+                value={horizonDays}
+                onChange={(event) => setHorizonDays(Number(event.target.value))}
+                helperText="Planifică următoarele X zile"
+                slotProps={{ htmlInput: { min: 1, max: 30 } }}
+              />
+              <Button variant="contained" onClick={() => void runPlanner("generate")} disabled={loading} sx={{ mt: { md: 0.25 }, minHeight: 56 }}>
+                Generează plan
+              </Button>
+              <Button variant="outlined" onClick={() => void runPlanner("replan")} disabled={loading} sx={{ mt: { md: 0.25 }, minHeight: 56 }}>
+                Replanifică
+              </Button>
+              <Button variant="outlined" onClick={load} disabled={loading} sx={{ mt: { md: 0.25 }, minHeight: 56 }}>
+                Reîncarcă
+              </Button>
+            </Stack>
+            <Box sx={{ mt: { md: 0.75 }, justifySelf: { xs: "flex-start", md: "end" } }}>
+              <Tooltip
+                arrow
+                placement="top"
+                title={
+                  <Box>
+                    <Typography sx={{ fontSize: 13 }}>Generează plan reconstruiește complet planul în intervalul ales.</Typography>
+                    <Typography sx={{ fontSize: 13, mt: 0.5 }}>Replanifică mută doar taskurile cu probleme și păstrează blocurile valide.</Typography>
+                  </Box>
+                }
+              >
+                <IconButton
+                  aria-label="Informații planificare"
+                  sx={{ border: "1px solid", borderColor: "divider", width: 44, height: 44 }}
+                >
+                <InfoOutlinedIcon />
+              </IconButton>
+            </Tooltip>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
       ) : (
@@ -402,3 +454,6 @@ export function PlanTab({ projectId }: { projectId: number }) {
     </Stack>
   );
 }
+
+
+
