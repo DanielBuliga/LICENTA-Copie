@@ -34,7 +34,6 @@ from app.services.notification_service import (
     notify_task_deleted,
 )
 from app.services.activity_service import log_project_activity
-from app.services.task_status_service import recompute_task_status
 
 from app.utils.time_utils import utc_naive
 
@@ -178,11 +177,6 @@ def get_tasks_for_project(
     if not is_member(db, project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a project member")
 
-    tasks = list_tasks(db, project_id)
-    parent_ids = {task.parent_task_id for task in tasks if task.parent_task_id is not None}
-    for task in tasks:
-        if task.id not in parent_ids:
-            recompute_task_status(db, task)
     return list_tasks(db, project_id)
 
 

@@ -20,6 +20,7 @@ from app.services.planning_engine import pack_task_into_slots, as_utc
 from app.services.notification_service import notify_plan_problems, notify_task_assigned, notify_task_replanned
 from app.services.activity_service import log_project_activity
 from app.services.problems_service import compute_problems
+from app.services.task_status_service import recompute_task_status
 
 from app.models.scheduled_block import ScheduledBlock
 from app.models.task import Task
@@ -308,6 +309,7 @@ def generate_plan(
                         assignments_preserved += 1
                     else:
                         create_assignment(db, task.id, best_user, task.estimate_minutes)
+                        recompute_task_status(db, task)
                         notify_task_assigned(db, task, best_user)
                         assignments_created += 1
 
