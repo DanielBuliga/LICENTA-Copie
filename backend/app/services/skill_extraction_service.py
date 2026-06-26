@@ -53,7 +53,9 @@ BUILTIN_ALIASES = {
 def normalize_text(value: str) -> str:
     value = unicodedata.normalize("NFKD", value)
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9+#.]+", " ", value.lower()).strip()
+    value = re.sub(r"[^a-z0-9+#.]+", " ", value.lower())
+    value = re.sub(r"(?<=\w)\.(?=\s|$)", " ", value)
+    return value.strip()
 
 
 def phrase_pattern(phrase: str) -> str:
