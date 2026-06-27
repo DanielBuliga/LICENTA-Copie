@@ -7,6 +7,7 @@ from app.core.permissions import require_roles
 from app.schemas.assignment import AssignmentCreate, AssignmentUpdate, AssignmentPublic
 from app.services.projects_service import is_member
 from app.services.tasks_service import get_task, has_subtasks
+from app.services.eligibility_service import eligible_members_for_task
 from app.services.assignments_service import (
     list_assignments,
     get_assignment,
@@ -70,9 +71,25 @@ def add_assignment(
     if existing:
         raise HTTPException(status_code=400, detail="Utilizatorul este deja asignat la acest task.")
 
-    row = create_assignment(db, task_id, payload.user_id, payload.assigned_minutes)
+    eligible_user_ids = set(eligible_members_for_task(db, task.project_id, task.id))
+    is_eligible = payload.user_id in eligible_user_ids
+    assignment_source = "MANUAL"
+    if not is_eligible:
+        if not payload.allow_ineligible:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "INELIGIBLE_MEMBER_CONFIRMATION_REQUIRED",
+                    "msg": "Membrul selectat nu are toate competențele necesare pentru acest task.",
+                    "user_id": payload.user_id,
+                },
+            )
+        assignment_source = "MANUAL_OVERRIDE"
+
+    row = create_assignment(db, task_id, payload.user_id, payload.assigned_minutes, assignment_source=assignment_source)
     notify_task_assigned(db, task, payload.user_id)
     assigned_user = db.query(User).filter(User.id == payload.user_id).first()
+    assignment_note = " Asignarea a fost confirmată manual peste regula de competențe." if assignment_source == "MANUAL_OVERRIDE" else ""
     log_project_activity(
         db,
         task.project_id,
@@ -81,7 +98,7 @@ def add_assignment(
         actor_id=current_user.id,
         entity_type="TASK",
         entity_id=task.id,
-        details=f"Asignat către {assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}.",
+        details=f"Asignat către {assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}." + assignment_note,
     )
     notify_plan_impact(
         db,

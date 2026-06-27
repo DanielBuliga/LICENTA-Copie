@@ -78,7 +78,17 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
             )
 
         eligible = eligible_members_for_task(db, project_id, task.id)
-        if len(eligible) == 0:
+        has_manual_override = (
+            db.query(TaskAssignment.id)
+            .filter(
+                TaskAssignment.task_id == task.id,
+                TaskAssignment.assignment_source == "MANUAL_OVERRIDE",
+                TaskAssignment.member_status != "DONE",
+            )
+            .first()
+            is not None
+        )
+        if len(eligible) == 0 and not has_manual_override:
             problems.append(
                 {
                     "task_id": task.id,
@@ -86,6 +96,41 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
                     "task_path": task_path(db, task),
                     "type": "NO_SKILLS",
                     "reason": "Nu există niciun membru eligibil pe baza skillurilor cerute.",
+                    "deadline": task.deadline,
+                }
+            )
+
+        eligible_user_ids = set(eligible)
+        assigned_members = (
+            db.query(TaskAssignment, ProjectMember, User)
+            .join(ProjectMember, ProjectMember.user_id == TaskAssignment.user_id)
+            .join(User, User.id == TaskAssignment.user_id)
+            .filter(
+                TaskAssignment.task_id == task.id,
+                ProjectMember.project_id == project_id,
+                ProjectMember.status == "ACTIVE",
+            )
+            .all()
+        )
+        for assignment, member, user in assigned_members:
+            if (
+                assignment.member_status == "DONE"
+                or assignment.user_id in eligible_user_ids
+                or getattr(assignment, "assignment_source", "MANUAL") == "MANUAL_OVERRIDE"
+            ):
+                continue
+            source = getattr(assignment, "assignment_source", "MANUAL")
+            source_label = "manuală" if source == "MANUAL" else "automată"
+            problems.append(
+                {
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_path": task_path(db, task),
+                    "type": "ASSIGNED_MEMBER_NOT_ELIGIBLE",
+                    "reason": (
+                        f"Responsabilul {user.name or user.email} nu mai este eligibil pe baza competențelor cerute "
+                        f"(asignare {source_label})."
+                    ),
                     "deadline": task.deadline,
                 }
             )
@@ -186,9 +231,10 @@ def compute_problems(db: Session, project_id: int) -> list[dict]:
         "DEADLINE_PASSED": 1,
         "AVAILABILITY_CONFLICT": 2,
         "INACTIVE_MEMBER": 3,
-        "NO_SKILLS": 4,
-        "BLOCKED": 5,
-        "AT_RISK": 6,
+        "ASSIGNED_MEMBER_NOT_ELIGIBLE": 4,
+        "NO_SKILLS": 5,
+        "BLOCKED": 6,
+        "AT_RISK": 7,
     }
     grouped: dict[int, dict] = {}
     for problem in unique.values():

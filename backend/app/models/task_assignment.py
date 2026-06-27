@@ -14,10 +14,11 @@ class TaskAssignment(Base):
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
-     # Optional: if you want to split effort per member
+    # Optional: if you want to split effort per member
     assigned_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     member_status: Mapped[str] = mapped_column(String(20), default="TODO", nullable=False)
+    assignment_source: Mapped[str] = mapped_column(String(20), default="MANUAL", nullable=False)
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

@@ -46,6 +46,11 @@ class SchemaValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             AssignmentCreate(user_id=1, assigned_minutes=0)
 
+    def test_assignment_create_accepts_manual_override_confirmation(self):
+        payload = AssignmentCreate(user_id=1, assigned_minutes=None, allow_ineligible=True)
+
+        self.assertTrue(payload.allow_ineligible)
+
 
 if __name__ == "__main__":
     unittest.main()

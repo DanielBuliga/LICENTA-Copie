@@ -14,10 +14,15 @@ from app.services.projects_service import is_member, list_members
 from app.services.tasks_service import leaf_tasks
 from app.services.dependencies_service import list_dependencies
 from app.services.eligibility_service import eligible_members_for_task
-from app.services.assignments_service import create_assignment, list_assigned_user_ids
+from app.services.assignments_service import create_assignment
 from app.services.slot_builder import build_free_slots_for_user
 from app.services.planning_engine import pack_task_into_slots, as_utc
-from app.services.notification_service import notify_plan_problems, notify_task_assigned, notify_task_replanned
+from app.services.notification_service import (
+    notify_plan_problems,
+    notify_task_assigned,
+    notify_task_replanned,
+    notify_task_unassigned,
+)
 from app.services.activity_service import log_project_activity
 from app.services.problems_service import compute_problems
 from app.services.task_status_service import recompute_task_status
@@ -278,25 +283,71 @@ def generate_plan(
                 finish_time[task.id] = earliest_start
                 planning_done = True
 
+            assignments = [] if planning_done else db.query(TaskAssignment).filter(TaskAssignment.task_id == task.id).all()
+            override_assignments = [
+                assignment
+                for assignment in assignments
+                if getattr(assignment, "assignment_source", "MANUAL") == "MANUAL_OVERRIDE" and assignment.user_id in member_ids
+            ]
+            override_users = [assignment.user_id for assignment in override_assignments]
             eligible_users_all = [] if planning_done else eligible_members_for_task(db, project_id, task.id)
             eligible_users_all = [u for u in eligible_users_all if u in member_ids]
 
             if planning_done:
                 pass
-            elif not eligible_users_all:
+            elif not eligible_users_all and not override_users:
                 at_risk.append(AtRiskItem(task_id=task.id, reason="No eligible member (skills)"))
             else:
-                assigned_users = list_assigned_user_ids(db, task.id)
-                eligible_assigned_users = [u for u in assigned_users if u in eligible_users_all]
+                manual_assignments = [
+                    assignment
+                    for assignment in assignments
+                    if getattr(assignment, "assignment_source", "MANUAL") == "MANUAL"
+                ]
+                auto_assignments = [
+                    assignment
+                    for assignment in assignments
+                    if getattr(assignment, "assignment_source", "MANUAL") == "AUTO"
+                ]
+                manual_users = [assignment.user_id for assignment in manual_assignments]
+                auto_users = [assignment.user_id for assignment in auto_assignments]
+                eligible_manual_users = [user_id for user_id in manual_users if user_id in eligible_users_all]
+                eligible_auto_users = [user_id for user_id in auto_users if user_id in eligible_users_all]
 
-                # Manual assignments are authoritative. We only auto-assign unassigned tasks.
+                # Manual overrides are explicit owner decisions. Auto assignments can be replaced when skill eligibility changes.
                 assignment_blocked = False
-                if assigned_users and not eligible_assigned_users:
+                if manual_assignments and not eligible_manual_users:
                     at_risk.append(AtRiskItem(task_id=task.id, reason="Assigned member is not eligible (skills)"))
                     candidate_users = []
                     assignment_blocked = True
                 else:
-                    candidate_users = eligible_assigned_users if assigned_users else eligible_users_all
+                    invalid_auto_assignments = [
+                        assignment for assignment in auto_assignments if assignment.user_id not in eligible_users_all
+                    ]
+                    if invalid_auto_assignments:
+                        now_naive = utc_naive(datetime.now(timezone.utc))
+                        for assignment in invalid_auto_assignments:
+                            db.query(ScheduledBlock).filter(
+                                ScheduledBlock.task_id == task.id,
+                                ScheduledBlock.user_id == assignment.user_id,
+                                ScheduledBlock.block_status == "PLANNED",
+                                ScheduledBlock.end_datetime >= now_naive,
+                            ).delete(synchronize_session=False)
+                            notify_task_unassigned(db, task, assignment.user_id)
+                            db.delete(assignment)
+                        db.commit()
+                        assignments = [assignment for assignment in assignments if assignment not in invalid_auto_assignments]
+                        auto_assignments = [assignment for assignment in auto_assignments if assignment not in invalid_auto_assignments]
+                        auto_users = [assignment.user_id for assignment in auto_assignments]
+                        eligible_auto_users = [user_id for user_id in auto_users if user_id in eligible_users_all]
+
+                    if override_users:
+                        candidate_users = override_users
+                    elif eligible_manual_users:
+                        candidate_users = eligible_manual_users
+                    elif eligible_auto_users:
+                        candidate_users = eligible_auto_users
+                    else:
+                        candidate_users = eligible_users_all
 
                 best_user, best_free = _pick_best_user(candidate_users, slots_by_user, earliest_start, deadline_utc)
 
@@ -305,10 +356,11 @@ def generate_plan(
                 elif best_user is None or best_free <= 0:
                     at_risk.append(AtRiskItem(task_id=task.id, reason="No free time until deadline"))
                 else:
-                    if assigned_users:
+                    existing_user_ids = {assignment.user_id for assignment in assignments}
+                    if best_user in existing_user_ids:
                         assignments_preserved += 1
                     else:
-                        create_assignment(db, task.id, best_user, task.estimate_minutes)
+                        create_assignment(db, task.id, best_user, task.estimate_minutes, assignment_source="AUTO")
                         recompute_task_status(db, task)
                         notify_task_assigned(db, task, best_user)
                         assignments_created += 1

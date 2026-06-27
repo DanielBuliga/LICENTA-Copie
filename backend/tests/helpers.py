@@ -94,6 +94,7 @@ class TaskAssignmentStub:
     user_id: int
     member_status: str = "TODO"
     assigned_minutes: int | None = None
+    assignment_source: str = "MANUAL"
 
 
 class ScheduledBlockStub:

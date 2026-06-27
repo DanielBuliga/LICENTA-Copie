@@ -44,6 +44,7 @@ import KeyboardArrowRightRoundedIcon from "@mui/icons-material/KeyboardArrowRigh
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import dayjs, { Dayjs } from "dayjs";
 import "dayjs/locale/ro";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/api";
@@ -100,6 +101,7 @@ type AssignmentItem = {
   user_id: number;
   assigned_minutes: number | null;
   member_status: MemberStatus;
+  assignment_source: "MANUAL" | "AUTO" | "MANUAL_OVERRIDE";
 };
 
 type SkillExtractionResponse = {
@@ -124,6 +126,19 @@ type SkillItem = {
   id: number;
   name: string;
 };
+
+type IneligibleAssignmentDetail = {
+  code?: string;
+  msg?: string;
+  user_id?: number;
+};
+
+function getIneligibleAssignmentDetail(error: unknown): IneligibleAssignmentDetail | null {
+  if (!axios.isAxiosError(error) || error.response?.status !== 409) return null;
+  const detail = error.response.data?.detail as IneligibleAssignmentDetail | undefined;
+  if (detail?.code !== "INELIGIBLE_MEMBER_CONFIRMATION_REQUIRED") return null;
+  return detail;
+}
 
 type DependencyItem = {
   predecessor_task_id: number;
@@ -553,14 +568,39 @@ export function TasksTab({ projectId }: { projectId: number }) {
     const desired = new Set(desiredUserIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
     const current = new Set((assignmentsByTask[taskId] ?? []).map((assignment) => assignment.user_id));
 
-    await Promise.all([
-      ...Array.from(current)
+    await Promise.all(
+      Array.from(current)
         .filter((userId) => !desired.has(userId))
-        .map((userId) => api.delete(`/tasks/${taskId}/assignments/${userId}`)),
-      ...Array.from(desired)
-        .filter((userId) => !current.has(userId))
-        .map((userId) => api.post(`/tasks/${taskId}/assignments`, { user_id: userId, assigned_minutes: null })),
-    ]);
+        .map((userId) => api.delete(`/tasks/${taskId}/assignments/${userId}`))
+    );
+
+    for (const userId of Array.from(desired).filter((id) => !current.has(id))) {
+      try {
+        await api.post(`/tasks/${taskId}/assignments`, { user_id: userId, assigned_minutes: null });
+      } catch (err: unknown) {
+        const detail = getIneligibleAssignmentDetail(err);
+        if (!detail) throw err;
+
+        const member = membersById[userId];
+        const label = member?.name || member?.email || `User #${userId}`;
+        const confirmed = await confirm({
+          title: "Responsabil fără competențe complete",
+          description:
+            detail.msg ??
+            `Membrul ${label} nu are toate competențele necesare pentru acest task. Vrei să păstrezi asignarea manuală?`,
+          confirmLabel: "Păstrează asignarea",
+          cancelLabel: "Anulează",
+          tone: "warning",
+        });
+        if (!confirmed) continue;
+
+        await api.post(`/tasks/${taskId}/assignments`, {
+          user_id: userId,
+          assigned_minutes: null,
+          allow_ineligible: true,
+        });
+      }
+    }
   }
 
   async function syncDependencies(taskId: number, desiredPredecessorIds: string[]) {

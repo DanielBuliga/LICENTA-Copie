@@ -15,8 +15,19 @@ def get_assignment(db: Session, task_id: int, user_id: int) -> TaskAssignment | 
     )
 
 
-def create_assignment(db: Session, task_id: int, user_id: int, assigned_minutes: int | None) -> TaskAssignment:
-    row = TaskAssignment(task_id=task_id, user_id=user_id, assigned_minutes=assigned_minutes)
+def create_assignment(
+    db: Session,
+    task_id: int,
+    user_id: int,
+    assigned_minutes: int | None,
+    assignment_source: str = "MANUAL",
+) -> TaskAssignment:
+    row = TaskAssignment(
+        task_id=task_id,
+        user_id=user_id,
+        assigned_minutes=assigned_minutes,
+        assignment_source=assignment_source,
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
