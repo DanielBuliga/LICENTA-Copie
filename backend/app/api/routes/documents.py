@@ -213,9 +213,11 @@ def delete_document(
     if not is_member(db, row.project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
-    if row.uploaded_by != current_user.id:
-        # OWNER/ADMIN check can be added later; this keeps MVP conservative.
-        raise HTTPException(status_code=403, detail="Doar utilizatorul care a încărcat documentul îl poate șterge.")
+    role = None
+    from app.services.projects_service import get_member_role
+    role = get_member_role(db, row.project_id, current_user.id)
+    if row.uploaded_by != current_user.id and role not in {"OWNER", "ADMIN"}:
+        raise HTTPException(status_code=403, detail="Doar utilizatorul care a încărcat documentul, ownerul sau adminul îl poate șterge.")
 
     stored_path = find_stored_document(row.id)
     if stored_path:
