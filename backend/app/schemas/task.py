@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -23,7 +24,7 @@ class TaskUpdate(BaseModel):
     estimate_minutes: int | None = Field(default=None, ge=1)
 
     deadline: datetime | None = None
-    status: str | None = None  # keep simple for MVP
+    status: Literal["OPEN", "IN_PROGRESS", "READY_TO_CLOSE", "CLOSED"] | None = None
 
 
 class TaskPublic(BaseModel):
