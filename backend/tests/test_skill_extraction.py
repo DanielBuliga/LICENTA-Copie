@@ -1,3 +1,5 @@
+from pathlib import Path
+import shutil
 import unittest
 
 from helpers import ProjectDocumentStub, SkillAliasStub, SkillStub, TaskStub, load_service_module
@@ -104,6 +106,42 @@ class SkillExtractionTests(unittest.TestCase):
 
         self.assertEqual(result["document_count"], 1)
         self.assertEqual([item["name"] for item in result["suggestions"]], ["ICS Export"])
+
+    def test_extracts_from_uploaded_text_document_content(self):
+        upload_dir = Path("uploads") / "documents"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        document_path = upload_dir / "99_planning.txt"
+        document_path.write_text("Planul foloseste sortare topologica si algoritm greedy.", encoding="utf-8")
+        try:
+            db = FakeDb(
+                skills=[
+                    SkillStub(id=1, name="Sortare topologică"),
+                    SkillStub(id=2, name="Algoritm greedy"),
+                ],
+                documents=[ProjectDocumentStub(id=99, project_id=1, task_id=1, file_name="planning.txt")],
+            )
+            task = make_task("Planificare activități", "")
+
+            result = skill_extraction.extract_task_skills(db, task)
+
+            self.assertEqual(result["document_count"], 1)
+            self.assertEqual([item["name"] for item in result["suggestions"]], ["Algoritm greedy", "Sortare topologică"])
+        finally:
+            if document_path.exists():
+                document_path.unlink()
+            if upload_dir.exists() and not any(upload_dir.iterdir()):
+                upload_dir.rmdir()
+            uploads_root = Path("uploads")
+            if uploads_root.exists() and not any(uploads_root.iterdir()):
+                shutil.rmtree(uploads_root)
+
+    def test_does_not_match_skill_inside_larger_words(self):
+        db = FakeDb(skills=[SkillStub(id=1, name="REST API")])
+        task = make_task("Documentare", "Cuvinte precum forest sau apiary nu trebuie sa activeze termenul cautat.")
+
+        result = skill_extraction.extract_task_skills(db, task)
+
+        self.assertEqual(result["suggestions"], [])
 
 
 if __name__ == "__main__":

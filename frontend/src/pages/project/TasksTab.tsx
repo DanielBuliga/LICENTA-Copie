@@ -719,12 +719,12 @@ export function TasksTab({ projectId }: { projectId: number }) {
       await loadTasks();
       if (planningFieldsChanged) {
         setPlanImpactMessage(
-          "Modificarea poate afecta planul curent. Verifică tabul Problems sau rulează Replanificare dacă vrei ca programarea din calendar să fie actualizată."
+          "Modificarea poate afecta planul curent. Verifică tabul Probleme sau rulează replanificarea dacă vrei ca programarea din calendar să fie actualizată."
         );
       }
       setSuccess(
         planningFieldsChanged
-          ? "Task salvat. Modificarea poate afecta planul curent; verifică tabul Problems sau rulează Replanificare dacă este necesar."
+          ? "Task salvat. Modificarea poate afecta planul curent; verifică tabul Probleme sau rulează replanificarea dacă este necesar."
           : "Task salvat."
       );
     } catch (err: unknown) {
@@ -747,9 +747,9 @@ export function TasksTab({ projectId }: { projectId: number }) {
       await api.delete(`/tasks/${taskId}`);
       await loadTasks();
       setPlanImpactMessage(
-        "Taskul a fost șters. Dacă exista deja un plan generat, verifică tabul Plan sau rulează Replanificare."
+        "Taskul a fost șters. Dacă exista deja un plan generat, verifică tabul Plan sau rulează replanificarea."
       );
-      setSuccess("Task șters. Dacă exista deja un plan generat, verifică tabul Plan sau rulează Replanificare.");
+      setSuccess("Task șters. Dacă exista deja un plan generat, verifică tabul Plan sau rulează replanificarea.");
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut șterge taskul"));
     } finally {
@@ -766,7 +766,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       await api.patch(`/tasks/${taskId}/assignments/${me.id}`, { member_status: status });
       await loadTasks();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut actualiza statusul assignment-ului"));
+      setError(getApiErrorMessage(err, "Nu am putut actualiza statusul activității"));
     } finally {
       setLoading(false);
     }
@@ -792,7 +792,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       }
       await loadTasks();
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Nu am putut extrage skill-urile pentru task"));
+      setError(getApiErrorMessage(err, "Nu am putut extrage competențele pentru task"));
     } finally {
       setExtractingTaskId(null);
     }
@@ -1162,7 +1162,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
                               if (t.status === "CLOSED") return;
                               openActions(event, t);
                             }}
-                            aria-label="Actiuni task"
+                            aria-label="Acțiuni task"
                             disabled={t.status === "CLOSED"}
                             sx={{ border: "1px solid", borderColor: "divider", flexShrink: 0 }}
                           >
@@ -1194,7 +1194,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           }}
         >
           <ListItemIcon><AutoAwesomeRoundedIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Extrage skill-uri</ListItemText>
+          <ListItemText>Extrage competențe</ListItemText>
         </MenuItem>
         <MenuItem
           disabled={!actionsTask || actionsTask.status === "CLOSED" || Boolean(taskTree.find((task) => task.id === actionsTask?.id)?.hasChildren)}
@@ -1341,7 +1341,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
       </Dialog>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{editingTask ? "Editeaza task" : "Creează task"}</DialogTitle>
+        <DialogTitle>{editingTask ? "Editează task" : "Creează task"}</DialogTitle>
         {formError ? (
           <Box sx={{ px: 3, pb: 1 }}>
             <Alert severity="error" onClose={() => setFormError(null)}>
@@ -1363,7 +1363,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
             />
 
             <TextField
-              label="Descriere (optional)"
+              label="Descriere (opțional)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               fullWidth

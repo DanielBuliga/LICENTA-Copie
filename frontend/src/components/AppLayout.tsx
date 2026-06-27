@@ -98,6 +98,7 @@ function opensProjectPlan(notification: NotificationItem) {
 
 let cachedUserToken: string | null = null;
 let cachedCurrentUser: CurrentUser | null = null;
+const NOTIFICATIONS_PAGE_SIZE = 50;
 
 export function AppLayout({ title, children }: Props) {
   const nav = useNavigate();
@@ -109,8 +110,11 @@ export function AppLayout({ title, children }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsAnchor, setNotificationsAnchor] = useState<null | HTMLElement>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
+  const [loadingMoreNotifications, setLoadingMoreNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const notificationsRefreshTimer = useRef<number | null>(null);
+  const notificationsCountRef = useRef(0);
 
   const loadUser = useCallback(async () => {
     if (!token) return;
@@ -131,18 +135,32 @@ export function AppLayout({ title, children }: Props) {
     }
   }, [token]);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (append = false) => {
     if (!token) return;
+    if (append) setLoadingMoreNotifications(true);
     try {
       const [res, countRes] = await Promise.all([
-        api.get<NotificationItem[]>("/notifications"),
+        api.get<NotificationItem[]>("/notifications", {
+          params: { offset: append ? notificationsCountRef.current : 0, limit: NOTIFICATIONS_PAGE_SIZE },
+        }),
         api.get<UnreadCount>("/notifications/unread-count"),
       ]);
-      setNotifications(res.data);
+      setNotifications((current) => {
+        const next = append ? [...current, ...res.data] : res.data;
+        notificationsCountRef.current = next.length;
+        return next;
+      });
+      setHasMoreNotifications(res.data.length === NOTIFICATIONS_PAGE_SIZE);
       setUnreadCount(countRes.data.unread);
     } catch {
-      setNotifications([]);
+      if (!append) {
+        setNotifications([]);
+        notificationsCountRef.current = 0;
+        setHasMoreNotifications(false);
+      }
       setUnreadCount(0);
+    } finally {
+      setLoadingMoreNotifications(false);
     }
   }, [token]);
 
@@ -566,6 +584,19 @@ export function AppLayout({ title, children }: Props) {
               </Typography>
             )}
           </Stack>
+          {hasMoreNotifications ? (
+            <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => void loadNotifications(true)}
+                disabled={loadingMoreNotifications}
+                sx={{ fontWeight: 900 }}
+              >
+                {loadingMoreNotifications ? "Se încarcă..." : "Încarcă mai multe"}
+              </Button>
+            </Box>
+          ) : null}
         </Popover>
 
         <Box component="main" sx={{ px: { xs: 2, md: 4 }, py: 4, maxWidth: 1320 }}>

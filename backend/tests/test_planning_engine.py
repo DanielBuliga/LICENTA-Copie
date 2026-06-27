@@ -110,6 +110,47 @@ class PlanningEngineTests(unittest.TestCase):
             ],
         )
 
+    def test_pack_task_does_not_plan_after_deadline(self):
+        db = FakeDb()
+        task = make_task(estimate_minutes=30, deadline=utc_dt(2026, 6, 29, 10))
+        slots = [(utc_dt(2026, 6, 29, 10), utc_dt(2026, 6, 29, 11))]
+
+        created, remaining, last_end = pack_task_into_slots(
+            db=db,
+            project_id=1,
+            task=task,
+            user_id=7,
+            slots=slots,
+            earliest_start=utc_dt(2026, 6, 29, 9),
+        )
+
+        self.assertEqual(created, 0)
+        self.assertEqual(remaining, 30)
+        self.assertIsNone(last_end)
+        self.assertEqual(db.added, [])
+        self.assertEqual(slots, [(utc_dt(2026, 6, 29, 10), utc_dt(2026, 6, 29, 11))])
+
+    def test_pack_task_can_plan_only_remaining_minutes_for_replan(self):
+        db = FakeDb()
+        task = make_task(estimate_minutes=120, deadline=utc_dt(2026, 6, 29, 12))
+        slots = [(utc_dt(2026, 6, 29, 9), utc_dt(2026, 6, 29, 11))]
+
+        created, remaining, last_end = pack_task_into_slots(
+            db=db,
+            project_id=1,
+            task=task,
+            user_id=7,
+            slots=slots,
+            earliest_start=utc_dt(2026, 6, 29, 9),
+            minutes_to_plan=45,
+        )
+
+        self.assertEqual(created, 1)
+        self.assertEqual(remaining, 0)
+        self.assertEqual(last_end, utc_dt(2026, 6, 29, 9, 45))
+        self.assertEqual(db.added[0].planned_minutes, 45)
+        self.assertEqual(slots, [(utc_dt(2026, 6, 29, 9, 45), utc_dt(2026, 6, 29, 11))])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Box, Card, CardContent, Chip, LinearProgress, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, CardContent, Chip, LinearProgress, Stack, Typography } from "@mui/material";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 
 import { api } from "../../api/api";
@@ -72,6 +72,8 @@ const changeChipMeta: Record<string, { label: string; color: "default" | "primar
   "titlu:": { label: "Titlu", color: "default" },
 };
 
+const ACTIVITY_PAGE_SIZE = 50;
+
 function changeChipsFor(item: ActivityItem) {
   if (!item.details || !item.event_type.startsWith("TASK_")) return [];
   const primaryLabel = eventLabels[item.event_type];
@@ -92,28 +94,38 @@ export function ActivityTab({ projectId }: { projectId: number }) {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [tasksById, setTasksById] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (append = false) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [activityRes, tasksRes] = await Promise.all([
-        api.get<ActivityItem[]>(`/projects/${projectId}/activity`),
+        api.get<ActivityItem[]>(`/projects/${projectId}/activity`, {
+          params: { offset: append ? items.length : 0, limit: ACTIVITY_PAGE_SIZE },
+        }),
         api.get<TaskItem[]>(`/projects/${projectId}/tasks`),
       ]);
-      setItems(activityRes.data);
+      setItems((current) => (append ? [...current, ...activityRes.data] : activityRes.data));
+      setHasMore(activityRes.data.length === ACTIVITY_PAGE_SIZE);
       setTasksById(Object.fromEntries(tasksRes.data.map((task) => [task.id, task.title])));
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Nu am putut încărca istoricul proiectului"));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [projectId]);
+  }, [items.length, projectId]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [projectId]);
 
   const grouped = useMemo(() => {
     const byDay: Record<string, ActivityItem[]> = {};
@@ -167,7 +179,7 @@ export function ActivityTab({ projectId }: { projectId: number }) {
                           {formatActivityDetails(item.details).replace(
                             /parinte: (fara|\d+) -> (fara|\d+)/g,
                             (_match, from: string, to: string) =>
-                              `parinte: ${from === "fara" ? "fara" : tasksById[Number(from)] ?? `Task #${from}`} -> ${to === "fara" ? "fara" : tasksById[Number(to)] ?? `Task #${to}`}`
+                              `părinte: ${from === "fara" ? "fără" : tasksById[Number(from)] ?? `Task #${from}`} -> ${to === "fara" ? "fără" : tasksById[Number(to)] ?? `Task #${to}`}`
                           )}
                         </Typography>
                       ) : null}
@@ -186,6 +198,12 @@ export function ActivityTab({ projectId }: { projectId: number }) {
             Nu există încă evenimente în istoricul proiectului.
           </CardContent>
         </Card>
+      ) : null}
+
+      {hasMore ? (
+        <Button variant="outlined" onClick={() => void load(true)} disabled={loadingMore} sx={{ alignSelf: "center" }}>
+          {loadingMore ? "Se încarcă..." : "Încarcă mai multe"}
+        </Button>
       ) : null}
     </Stack>
   );

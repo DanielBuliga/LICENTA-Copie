@@ -99,6 +99,23 @@ class SlotBuilderTests(unittest.TestCase):
 
         self.assertEqual([local_time_range(slot) for slot in slots], [(time(9), time(10)), (time(11), time(12))])
 
+    def test_build_free_slots_subtracts_partial_override_across_fragmented_day(self):
+        monday = date(2026, 6, 29)
+        db = FakeDb(
+            windows=[
+                AvailabilityWindowStub(user_id=1, weekday=0, start_time=time(9), end_time=time(12)),
+                AvailabilityWindowStub(user_id=1, weekday=0, start_time=time(13), end_time=time(15)),
+                AvailabilityWindowStub(user_id=1, weekday=0, start_time=time(16), end_time=time(18)),
+            ],
+            overrides=[
+                AvailabilityOverrideStub(user_id=1, day=monday, is_unavailable=False, start_time=time(10), end_time=time(17)),
+            ],
+        )
+
+        slots = build_free_slots_for_user(db, user_id=1, start_day=monday, horizon_days=1)
+
+        self.assertEqual([local_time_range(slot) for slot in slots], [(time(9), time(10)), (time(17), time(18))])
+
     def test_build_free_slots_subtracts_existing_scheduled_blocks(self):
         monday = date(2026, 6, 29)
         db = FakeDb(
