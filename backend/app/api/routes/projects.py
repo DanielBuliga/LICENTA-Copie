@@ -44,7 +44,7 @@ ALLOWED_MEMBER_STATUSES = {"ACTIVE", "INACTIVE"}
 def require_owner(db: Session, project_id: int, user_id: int):
     role = get_member_role(db, project_id, user_id)
     if role != "OWNER":
-        raise HTTPException(status_code=403, detail="Only OWNER can manage project")
+        raise HTTPException(status_code=403, detail="Doar ownerul poate gestiona proiectul.")
 
 
 def _member_has_project_history(db: Session, project_id: int, user_id: int) -> bool:
@@ -127,11 +127,11 @@ def get_project(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     project = get_project_by_id(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Proiectul nu a fost găsit.")
 
     return project
 
@@ -143,7 +143,7 @@ def project_members(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     members = list_members(db, project_id)
     user_ids = [member.user_id for member in members]
@@ -176,17 +176,17 @@ def add_project_member(
 
     user = get_user_by_email(db, payload.email)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit.")
     if getattr(user, "status", "ACTIVE") != "ACTIVE":
-        raise HTTPException(status_code=400, detail="User account is deactivated")
+        raise HTTPException(status_code=400, detail="Contul utilizatorului este dezactivat.")
 
     existing = get_project_member(db, project_id, user.id, active_only=False)
     if existing and existing.status == "ACTIVE":
-        raise HTTPException(status_code=400, detail="User is already a project member")
+        raise HTTPException(status_code=400, detail="Utilizatorul este deja membru al proiectului.")
 
     role = payload.role
     if role not in ALLOWED_ROLES:
-        raise HTTPException(status_code=400, detail="Invalid role")
+        raise HTTPException(status_code=400, detail="Rolul nu este valid.")
 
     member = add_member(db, project_id, user.id, role=role)
     project = get_project_by_id(db, project_id)
@@ -196,11 +196,11 @@ def add_project_member(
             db,
             project_id,
             "MEMBER_ADDED",
-            f"Membru adaugat: {user.name or user.email}",
+            f"Membru adăugat: {user.name or user.email}",
             actor_id=current_user.id,
             entity_type="MEMBER",
             entity_id=user.id,
-            details=f"Rol initial: {role}.",
+            details=f"Rol inițial: {role}.",
         )
     return member
 
@@ -217,21 +217,21 @@ def change_member_role(
 
     member = get_project_member(db, project_id, user_id, active_only=False)
     if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=404, detail="Membrul nu a fost găsit.")
     if member.status != "ACTIVE":
-        raise HTTPException(status_code=400, detail="Inactive members cannot change role")
+        raise HTTPException(status_code=400, detail="Rolul membrilor inactivi nu poate fi modificat.")
 
     new_role = payload.role
     if new_role not in ALLOWED_ROLES:
-        raise HTTPException(status_code=400, detail="Invalid role")
+        raise HTTPException(status_code=400, detail="Rolul nu este valid.")
 
     project = get_project_by_id(db, project_id)
     if project and project.created_by == user_id and new_role != member.role:
-        raise HTTPException(status_code=400, detail="Project creator role cannot be changed")
+        raise HTTPException(status_code=400, detail="Rolul creatorului proiectului nu poate fi modificat.")
 
     if member.role == "OWNER" and new_role != "OWNER":
         if count_owners(db, project_id) <= 1:
-            raise HTTPException(status_code=400, detail="Project must have at least one OWNER")
+            raise HTTPException(status_code=400, detail="Proiectul trebuie să aibă cel puțin un owner.")
 
     old_role = member.role
     member.role = new_role
@@ -247,7 +247,7 @@ def change_member_role(
         actor_id=current_user.id,
         entity_type="MEMBER",
         entity_id=user_id,
-        details=f"Rol schimbat din {old_role} in {new_role}.",
+        details=f"Rol schimbat din {old_role} în {new_role}.",
     )
     return member
 
@@ -264,20 +264,20 @@ def change_member_status(
 
     member = get_project_member(db, project_id, user_id, active_only=False)
     if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=404, detail="Membrul nu a fost găsit.")
 
     new_status = payload.status.upper()
     if new_status not in ALLOWED_MEMBER_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid member status")
+        raise HTTPException(status_code=400, detail="Statusul membrului nu este valid.")
 
     if member.role == "OWNER" and new_status != "ACTIVE":
         if count_owners(db, project_id) <= 1:
-            raise HTTPException(status_code=400, detail="Project must have at least one active OWNER")
+            raise HTTPException(status_code=400, detail="Proiectul trebuie să aibă cel puțin un owner activ.")
 
     if new_status == "ACTIVE":
         user = db.query(User).filter(User.id == user_id).first()
         if user and getattr(user, "status", "ACTIVE") != "ACTIVE":
-            raise HTTPException(status_code=400, detail="User account is deactivated")
+            raise HTTPException(status_code=400, detail="Contul utilizatorului este dezactivat.")
         member.status = "ACTIVE"
         member.inactive_at = None
         member.inactive_reason = None
@@ -292,7 +292,7 @@ def change_member_status(
             actor_id=current_user.id,
             entity_type="MEMBER",
             entity_id=user_id,
-            details="Status schimbat in ACTIVE.",
+            details="Status schimbat în ACTIVE.",
         )
         return member
 
@@ -307,7 +307,7 @@ def change_member_status(
         actor_id=current_user.id,
         entity_type="MEMBER",
         entity_id=user_id,
-        details=payload.reason or "Status schimbat in INACTIVE.",
+        details=payload.reason or "Status schimbat în INACTIVE.",
     )
     notify_member_inactive_replan_needed(db, project_id, user_id)
     return member
@@ -324,16 +324,16 @@ def remove_project_member(
 
     member = get_project_member(db, project_id, user_id, active_only=False)
     if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=404, detail="Membrul nu a fost găsit.")
 
     if member.role == "OWNER" and member.status == "ACTIVE":
         if count_owners(db, project_id) <= 1:
-            raise HTTPException(status_code=400, detail="Project must have at least one active OWNER")
+            raise HTTPException(status_code=400, detail="Proiectul trebuie să aibă cel puțin un owner activ.")
 
     has_history = _member_has_project_history(db, project_id, user_id)
     if has_history:
         _delete_future_member_blocks(db, project_id, user_id)
-        deactivate_member(db, member, "Membru eliminat din proiect, istoric pastrat")
+        deactivate_member(db, member, "Membru eliminat din proiect, istoric păstrat")
         user = db.query(User).filter(User.id == user_id).first()
         log_project_activity(
             db,
@@ -343,13 +343,13 @@ def remove_project_member(
             actor_id=current_user.id,
             entity_type="MEMBER",
             entity_id=user_id,
-            details="Eliminare ceruta, dar membrul avea istoric si a fost pastrat ca INACTIVE.",
+            details="Eliminare cerută, dar membrul avea istoric și a fost păstrat ca INACTIVE.",
         )
         notify_member_inactive_replan_needed(db, project_id, user_id)
         return MemberRemoveResponse(
             action="deactivated",
             status="INACTIVE",
-            message="Membrul are activitate in proiect si a fost marcat ca inactiv pentru pastrarea istoricului.",
+            message="Membrul are activitate în proiect și a fost marcat ca inactiv pentru păstrarea istoricului.",
         )
 
     db.delete(member)
@@ -363,12 +363,12 @@ def remove_project_member(
         actor_id=current_user.id,
         entity_type="MEMBER",
         entity_id=user_id,
-        details="Membrul nu avea activitate in proiect.",
+        details="Membrul nu avea activitate în proiect.",
     )
     return MemberRemoveResponse(
         action="deleted",
         status=None,
-        message="Membrul nu avea activitate in proiect si a fost eliminat definitiv.",
+        message="Membrul nu avea activitate în proiect și a fost eliminat definitiv.",
     )
 
 
@@ -380,10 +380,10 @@ def delete_project(
 ):
     project = get_project_by_id(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Proiectul nu a fost găsit.")
 
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     require_owner(db, project_id, current_user.id)
 
@@ -400,10 +400,10 @@ def update_project(
 ):
     project = get_project_by_id(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Proiectul nu a fost găsit.")
 
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     require_owner(db, project_id, current_user.id)
 

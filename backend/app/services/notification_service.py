@@ -147,8 +147,8 @@ def notify_member_added(db: Session, project: Project, user_id: int, actor_name:
         db,
         user_id=user_id,
         notification_type="PROJECT_MEMBER_ADDED",
-        title=f"Ai fost adaugat in proiectul {project.title}",
-        body=f"{actor_name or 'Un owner'} te-a adaugat in proiectul {project.title}.",
+        title=f"Ai fost adăugat în proiectul {project.title}",
+        body=f"{actor_name or 'Un owner'} te-a adăugat în proiectul {project.title}.",
         project_id=project.id,
         event_key=f"project:{project.id}:member-added:{user_id}",
     )
@@ -161,7 +161,7 @@ def notify_task_assigned(db: Session, task: Task, user_id: int) -> None:
         user_id=user_id,
         notification_type="TASK_ASSIGNED",
         title=f"Task asignat: {task.title}",
-        body=f"Ai primit un task in proiectul {project.title if project else 'proiect'} cu deadline {task.deadline}.",
+        body=f"Ai primit un task în proiectul {project.title if project else 'proiect'} cu deadline {task.deadline}.",
         project_id=task.project_id,
         task_id=task.id,
         event_key=f"task:{task.id}:assigned:{user_id}",
@@ -202,7 +202,7 @@ def notify_task_unassigned(db: Session, task: Task, user_id: int) -> None:
         db,
         user_id=user_id,
         notification_type="TASK_UNASSIGNED",
-        title=f"Nu mai esti responsabil pentru: {task.title}",
+        title=f"Nu mai ești responsabil pentru: {task.title}",
         body=f"Ai fost scos de pe taskul {task.title} din proiectul {project.title if project else 'proiect'}.",
         project_id=task.project_id,
         task_id=task.id,
@@ -225,8 +225,8 @@ def notify_task_deleted(
             db,
             user_id=user_id,
             notification_type="TASK_DELETED",
-            title=f"Task sters: {task_title}",
-            body=f"Taskul {task_title} din proiectul {project.title if project else 'proiect'} a fost sters.",
+            title=f"Task șters: {task_title}",
+            body=f"Taskul {task_title} din proiectul {project.title if project else 'proiect'} a fost șters.",
             project_id=project_id,
             task_id=None,
             event_key=f"task:{task_id}:deleted:{user_id}",
@@ -244,9 +244,9 @@ def notify_task_replanned(
     if old_schedule and new_schedule:
         body = f"Taskul {task.title} a fost replanificat: {old_schedule} -> {new_schedule}."
     elif new_schedule:
-        body = f"Taskul {task.title} a fost adaugat in calendar: {new_schedule}."
+        body = f"Taskul {task.title} a fost adăugat în calendar: {new_schedule}."
     else:
-        body = f"Taskul {task.title} nu mai are interval planificat in calendar."
+        body = f"Taskul {task.title} nu mai are interval planificat în calendar."
     body += f" Proiect: {project.title if project else 'proiect'}."
     create_notification(
         db,
@@ -270,7 +270,7 @@ def notify_project_message(db: Session, project_id: int, message_id: int, sender
             db,
             user_id=member.user_id,
             notification_type="PROJECT_MESSAGE",
-            title=f"Mesaj nou in {project.title if project else 'proiect'}",
+            title=f"Mesaj nou în {project.title if project else 'proiect'}",
             body=f"{sender_name or 'Un membru'}: {clean_preview}",
             project_id=project_id,
             event_key=f"project:{project_id}:message:{message_id}:{member.user_id}",
@@ -300,11 +300,11 @@ def notify_plan_problems(db: Session, project_id: int, problems: list[object]) -
         problem_keys.append(f"{task_id}:{reason}")
     signature = hashlib.sha1("|".join(sorted(problem_keys)).encode("utf-8")).hexdigest()[:12]
     count = len(problems)
-    title = f"Probleme in plan: {project.title if project else 'proiect'}"
-    problem_label = "problema" if count == 1 else "probleme"
+    title = f"Probleme în plan: {project.title if project else 'proiect'}"
+    problem_label = "problemă" if count == 1 else "probleme"
     body = (
         f"Planul are {count} {problem_label}. "
-        "Verifica tabul Problems si ruleaza Replanificare daca este necesar."
+        "Verifică tabul Probleme și rulează replanificarea dacă este necesar."
     )
 
     for manager in managers:
@@ -472,10 +472,10 @@ def notify_member_inactive_replan_needed(db: Session, project_id: int, inactive_
             db,
             user_id=manager.user_id,
             notification_type="MEMBER_INACTIVE_REPLAN",
-            title=f"Membru inactiv in {project.title}",
+            title=f"Membru inactiv în {project.title}",
             body=(
-                f"Membrul {member_name} este inactiv si are {active_assignments} {task_label} nefinalizate. "
-                "Verifica tabul Problems si ruleaza Replanificare daca este necesar."
+                f"Membrul {member_name} este inactiv și are {active_assignments} {task_label} nefinalizate. "
+                "Verifică tabul Probleme și rulează replanificarea dacă este necesar."
             ),
             project_id=project_id,
             event_key=f"project:{project_id}:member-inactive:{inactive_user_id}:active-assignments:{active_assignments}",
@@ -490,8 +490,8 @@ def notify_ready_to_close(db: Session, task: Task) -> None:
             db,
             user_id=owner.user_id,
             notification_type="TASK_READY_TO_CLOSE",
-            title=f"Task gata de inchidere: {task.title}",
-            body=f"Taskul {task.title} din proiectul {project.title if project else 'proiect'} este READY_TO_CLOSE.",
+            title=f"Task gata de închidere: {task.title}",
+            body=f"Taskul {task.title} din proiectul {project.title if project else 'proiect'} este gata de verificare.",
             project_id=task.project_id,
             task_id=task.id,
             event_key=f"task:{task.id}:ready-to-close:{owner.user_id}",
@@ -512,7 +512,7 @@ def notify_project_completed_if_needed(db: Session, project_id: int) -> None:
             user_id=member.user_id,
             notification_type="PROJECT_COMPLETED",
             title=f"Proiect finalizat: {project.title}",
-            body=f"Toate taskurile din proiectul {project.title} sunt inchise.",
+            body=f"Toate taskurile din proiectul {project.title} sunt închise.",
             project_id=project_id,
             event_key=f"project:{project_id}:completed:{member.user_id}",
         )
@@ -547,7 +547,7 @@ def send_deadline_reminders(db: Session) -> int:
             db,
             user_id=assignment.user_id,
             notification_type="DEADLINE_REMINDER",
-            title=f"Deadline in {hours}h: {task.title}",
+            title=f"Deadline în {hours}h: {task.title}",
             body=f"Taskul {task.title} din proiectul {project.title} are deadline la {task.deadline}.",
             project_id=task.project_id,
             task_id=task.id,
@@ -657,7 +657,7 @@ def send_missed_planned_work_notifications(db: Session) -> int:
             title=f"Bloc planificat nefinalizat: {task.title}",
             body=(
                 f"Taskul {task.title} din proiectul {project.title} avea un bloc planificat "
-                f"intre {block.start_datetime} si {block.end_datetime}, dar nu a fost marcat ca finalizat."
+                f"între {block.start_datetime} și {block.end_datetime}, dar nu a fost marcat ca finalizat."
             ),
             project_id=task.project_id,
             task_id=task.id,
@@ -685,7 +685,7 @@ def send_missed_planned_work_notifications(db: Session) -> int:
                 title=f"Bloc planificat nefinalizat: {task.title}",
                 body=(
                     f"Taskul {task.title} din proiectul {project.title} avea un bloc planificat "
-                    f"intre {block.start_datetime} si {block.end_datetime}. Verifica tabul Probleme si ruleaza Replanificare daca este necesar."
+                    f"între {block.start_datetime} și {block.end_datetime}. Verifică tabul Probleme și rulează replanificarea dacă este necesar."
                 ),
                 project_id=task.project_id,
                 task_id=task.id,

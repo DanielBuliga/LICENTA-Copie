@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+﻿from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth_deps import get_current_user
@@ -19,7 +19,7 @@ def get_project_activity(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     rows = list_project_activities(db, project_id, offset=offset, limit=limit)
     return [

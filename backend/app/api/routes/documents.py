@@ -126,7 +126,7 @@ def list_project_documents(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     query = db.query(ProjectDocument).filter(ProjectDocument.project_id == project_id)
     if task_id is not None:
@@ -143,20 +143,20 @@ async def upload_project_document(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     file_name, file_bytes, fields = parse_multipart_upload(request.headers.get("content-type"), await request.body())
     task_id_value = fields.get("task_id")
     try:
         task_id = int(task_id_value) if task_id_value and task_id_value.strip() else None
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid task_id")
+        raise HTTPException(status_code=400, detail="Taskul selectat nu este valid.")
     description = fields.get("description")
 
     if task_id is not None:
         task = get_task(db, task_id)
         if not task or task.project_id != project_id:
-            raise HTTPException(status_code=400, detail="Invalid task_id")
+            raise HTTPException(status_code=400, detail="Taskul selectat nu este valid.")
 
     row = ProjectDocument(
         project_id=project_id,
@@ -186,14 +186,14 @@ def download_document(
 ):
     row = db.query(ProjectDocument).filter(ProjectDocument.id == document_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail="Documentul nu a fost găsit.")
 
     if not is_member(db, row.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     stored_path = find_stored_document(row.id)
     if not stored_path or not stored_path.exists():
-        raise HTTPException(status_code=404, detail="Stored file not found")
+        raise HTTPException(status_code=404, detail="Fișierul salvat nu a fost găsit.")
 
     return FileResponse(stored_path, filename=row.file_name)
 
@@ -206,14 +206,14 @@ def delete_document(
 ):
     row = db.query(ProjectDocument).filter(ProjectDocument.id == document_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail="Documentul nu a fost găsit.")
 
     if not is_member(db, row.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     if row.uploaded_by != current_user.id:
         # OWNER/ADMIN check can be added later; this keeps MVP conservative.
-        raise HTTPException(status_code=403, detail="Only uploader can delete this document")
+        raise HTTPException(status_code=403, detail="Doar utilizatorul care a încărcat documentul îl poate șterge.")
 
     stored_path = find_stored_document(row.id)
     if stored_path:

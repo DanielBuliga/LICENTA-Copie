@@ -32,11 +32,11 @@ def get_task_assignments(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     # Only project members can see assignments
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     return list_assignments(db, task_id)
 
@@ -50,25 +50,25 @@ def add_assignment(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     # Only project members can assign
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     # Only OWNER/ADMIN can add assignments
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
     if has_subtasks(db, task.id):
-        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere si nu se asigneaza direct")
+        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere și nu se asignează direct.")
 
     # You can only assign users who are members of the same project
     if not is_member(db, task.project_id, payload.user_id):
-        raise HTTPException(status_code=400, detail="User is not a member of this project")
+        raise HTTPException(status_code=400, detail="Utilizatorul nu este membru al acestui proiect.")
     
     existing = get_assignment(db, task_id, payload.user_id)
     if existing:
-        raise HTTPException(status_code=400, detail="User already assigned to task")
+        raise HTTPException(status_code=400, detail="Utilizatorul este deja asignat la acest task.")
 
     row = create_assignment(db, task_id, payload.user_id, payload.assigned_minutes)
     notify_task_assigned(db, task, payload.user_id)
@@ -81,16 +81,16 @@ def add_assignment(
         actor_id=current_user.id,
         entity_type="TASK",
         entity_id=task.id,
-        details=f"Asignat catre {assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}.",
+        details=f"Asignat către {assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}.",
     )
     notify_plan_impact(
         db,
         project_id=task.project_id,
-        title="Asignare modificata in plan",
+        title="Asignare modificată în plan",
         body=(
-            f"Taskul {task.title} a fost asignat catre "
+            f"Taskul {task.title} a fost asignat către "
             f"{assigned_user.name or assigned_user.email if assigned_user else f'User #{payload.user_id}'}. "
-            "Planificarea va pastra asignarea manuala; ruleaza Replanificare daca vrei sa actualizezi calendarul."
+            "Planificarea va păstra asignarea manuală; rulează replanificarea dacă vrei să actualizezi calendarul."
         ),
         actor_id=current_user.id,
         task_id=task.id,
@@ -114,24 +114,24 @@ def update_assignment_status(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     if task.status == "CLOSED":
-        raise HTTPException(status_code=400, detail="Taskul este inchis si statusul assignmentului nu mai poate fi modificat")
+        raise HTTPException(status_code=400, detail="Taskul este închis și statusul assignmentului nu mai poate fi modificat.")
 
     row = get_assignment(db, task_id, user_id)
     if not row:
-        raise HTTPException(status_code=404, detail="Assignment not found")
+        raise HTTPException(status_code=404, detail="Asignarea nu a fost găsită.")
 
     # Member can update only their own status (MVP)
     if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="You can only update your own assignment status")
+        raise HTTPException(status_code=403, detail="Poți modifica doar statusul assignmentului tău.")
 
     if payload.member_status not in ALLOWED_MEMBER_STATUS:
-        raise HTTPException(status_code=400, detail="Invalid member_status")
+        raise HTTPException(status_code=400, detail="Statusul assignmentului nu este valid.")
 
     old_status = row.member_status
     row.member_status = payload.member_status
@@ -165,18 +165,18 @@ def remove_assignment(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     # Only OWNER/ADMIN can remove assignments
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
     # Only project members can remove assignments (MVP)
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     row = get_assignment(db, task_id, user_id)
     if not row:
-        raise HTTPException(status_code=404, detail="Assignment not found")
+        raise HTTPException(status_code=404, detail="Asignarea nu a fost găsită.")
     assigned_user = db.query(User).filter(User.id == user_id).first()
 
     db.query(ScheduledBlock).filter(
@@ -196,19 +196,19 @@ def remove_assignment(
             db,
             task.project_id,
             "TASK_UNASSIGNED",
-            f"Asignare eliminata: {task.title}",
+            f"Asignare eliminată: {task.title}",
             actor_id=current_user.id,
             entity_type="TASK",
             entity_id=task.id,
-            details=f"Eliminata asignarea pentru {assigned_user.name or assigned_user.email if assigned_user else f'User #{user_id}'}.",
+            details=f"Eliminată asignarea pentru {assigned_user.name or assigned_user.email if assigned_user else f'User #{user_id}'}.",
         )
         notify_plan_impact(
             db,
             project_id=task.project_id,
-            title="Asignare eliminata din plan",
+            title="Asignare eliminată din plan",
             body=(
-                f"A fost eliminata asignarea pentru {assigned_user.name or assigned_user.email if assigned_user else f'User #{user_id}'} "
-                f"din taskul {task.title}. Ruleaza Replanificare daca taskul trebuie realocat."
+                f"A fost eliminată asignarea pentru {assigned_user.name or assigned_user.email if assigned_user else f'User #{user_id}'} "
+                f"din taskul {task.title}. Rulează replanificarea dacă taskul trebuie realocat."
             ),
             actor_id=current_user.id,
             task_id=task.id,

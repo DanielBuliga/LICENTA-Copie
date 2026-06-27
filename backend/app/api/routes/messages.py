@@ -1,4 +1,4 @@
-from datetime import timezone
+﻿from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -38,7 +38,7 @@ def list_project_messages(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     query = db.query(ProjectMessage).filter(ProjectMessage.project_id == project_id)
     if after_id is not None:
@@ -56,11 +56,11 @@ def create_project_message(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     content = payload.content.strip()
     if not content:
-        raise HTTPException(status_code=400, detail="Message cannot be empty")
+        raise HTTPException(status_code=400, detail="Mesajul nu poate fi gol.")
 
     row = ProjectMessage(project_id=project_id, sender_id=current_user.id, content=content)
     db.add(row)

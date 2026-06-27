@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -51,7 +51,7 @@ def export_plan_ics(
 ):
     # Members can export plan for the project
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     # Default: export only for current user
     if user_id is None:
@@ -59,7 +59,7 @@ def export_plan_ics(
 
     # If filtering by user_id, make sure that user is also a member
     if user_id is not None and not is_member(db, project_id, user_id):
-        raise HTTPException(status_code=400, detail="user_id is not a project member")
+        raise HTTPException(status_code=400, detail="Utilizatorul selectat nu este membru al proiectului.")
 
     project = db.query(Project).filter(Project.id == project_id).first()
     blocks = list_blocks(db, project_id, date_from, date_to, user_id=user_id)

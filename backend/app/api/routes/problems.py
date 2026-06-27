@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
@@ -19,7 +19,7 @@ def get_plan_problems(
 ):
     # Members can view problems (read-only)
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     problems = compute_problems(db, project_id)
     return ProblemsResponse(problems=[ProblemItem(**p) for p in problems])

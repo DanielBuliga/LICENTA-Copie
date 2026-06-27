@@ -137,10 +137,10 @@ def put_my_windows(payload: WindowsUpdate, db: Session = Depends(get_db), curren
     items = []
     for w in payload.windows:
         if w.start_time >= w.end_time:
-            raise HTTPException(status_code=400, detail="Invalid window: start_time must be < end_time")
+            raise HTTPException(status_code=400, detail="Intervalul nu este valid: ora de început trebuie să fie înaintea orei de final.")
         items.append((w.weekday, w.start_time, w.end_time))
     if has_overlaps(items):
-        raise HTTPException(status_code=400, detail="Availability windows cannot overlap on the same day")
+        raise HTTPException(status_code=400, detail="Intervalele de disponibilitate din aceeași zi nu se pot suprapune.")
 
     old_signature = normalize_windows_signature((w.weekday, w.start_time, w.end_time) for w in list_windows(db, current_user.id))
     new_signature = normalize_windows_signature(items)
@@ -184,9 +184,9 @@ def put_my_overrides(payload: OverridesUpdate, db: Session = Depends(get_db), cu
             continue
 
         if o.start_time is None or o.end_time is None:
-            raise HTTPException(status_code=400, detail="Override needs start_time and end_time")
+            raise HTTPException(status_code=400, detail="Excepția trebuie să aibă oră de început și oră de final.")
         if o.start_time >= o.end_time:
-            raise HTTPException(status_code=400, detail="Invalid override: start_time must be < end_time")
+            raise HTTPException(status_code=400, detail="Excepția nu este validă: ora de început trebuie să fie înaintea orei de final.")
         if not override_overlaps_windows(windows_by_weekday.get(o.day.weekday(), []), o.start_time, o.end_time):
             raise HTTPException(
                 status_code=400,

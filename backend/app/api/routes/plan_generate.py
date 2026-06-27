@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+﻿from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -141,7 +141,7 @@ def generate_plan(
 ):
     # Must be member
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     # Only OWNER/ADMIN can generate/replan team plan
     require_roles(db, project_id, current_user.id, {"OWNER", "ADMIN"})
@@ -386,16 +386,16 @@ def generate_plan(
         db,
         project_id,
         "PLAN_GENERATED",
-        "Replanificare generata" if incremental_replan else "Planificare generata",
+        "Replanificare generată" if incremental_replan else "Planificare generată",
         actor_id=current_user.id,
         entity_type="PLAN",
         entity_id=project_id,
         details=(
             f"Blocuri create: {blocks_created}. "
             f"Blocuri eliminate: {blocks_removed}. "
-            f"Blocuri pastrate: {blocks_preserved}. "
-            f"Asignari create: {assignments_created}. "
-            f"Asignari pastrate: {assignments_preserved}. "
+            f"Blocuri păstrate: {blocks_preserved}. "
+            f"Asignări create: {assignments_created}. "
+            f"Asignări păstrate: {assignments_preserved}. "
             f"Probleme: {len(response_at_risk)}."
         ),
     )

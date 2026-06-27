@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -30,7 +30,7 @@ def get_all_skills(db: Session = Depends(get_db), _user=Depends(get_current_user
 def add_skill(payload: SkillCreate, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     existing = get_skill_by_name(db, payload.name)
     if existing:
-        raise HTTPException(status_code=400, detail="Skill already exists")
+        raise HTTPException(status_code=400, detail="Competența există deja.")
     return create_skill(db, payload.name)
 
 
@@ -43,11 +43,11 @@ def rename_skill(
 ):
     skill = get_skill(db, skill_id)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Competența nu a fost găsită.")
 
     existing = get_skill_by_name(db, payload.name)
     if existing and existing.id != skill_id:
-        raise HTTPException(status_code=400, detail="Skill name already exists")
+        raise HTTPException(status_code=400, detail="Există deja o competență cu acest nume.")
 
     skill.name = payload.name
     db.add(skill)
@@ -64,13 +64,13 @@ def delete_skill(
 ):
     skill = get_skill(db, skill_id)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Competența nu a fost găsită.")
 
     try:
         delete_skill_service(db, skill)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Skill is used by users/tasks and cannot be deleted")
+        raise HTTPException(status_code=400, detail="Competența este folosită de utilizatori sau taskuri și nu poate fi ștearsă.")
 
     return None
 
@@ -79,7 +79,7 @@ def delete_skill(
 def get_aliases(skill_id: int, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     skill = get_skill(db, skill_id)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Competența nu a fost găsită.")
     return list_skill_aliases(db, skill_id)
 
 
@@ -92,17 +92,17 @@ def add_alias(
 ):
     skill = get_skill(db, skill_id)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Competența nu a fost găsită.")
 
     alias = payload.alias.strip()
     if not alias:
-        raise HTTPException(status_code=400, detail="Alias cannot be empty")
+        raise HTTPException(status_code=400, detail="Aliasul nu poate fi gol.")
 
     try:
         return create_skill_alias(db, skill_id, alias)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Alias already exists for this skill")
+        raise HTTPException(status_code=400, detail="Aliasul există deja pentru această competență.")
 
 
 @router.delete("/{skill_id}/aliases/{alias_id}", status_code=204)
@@ -114,7 +114,7 @@ def remove_alias(
 ):
     alias = get_skill_alias(db, alias_id)
     if not alias or alias.skill_id != skill_id:
-        raise HTTPException(status_code=404, detail="Alias not found")
+        raise HTTPException(status_code=404, detail="Aliasul nu a fost găsit.")
 
     delete_skill_alias(db, alias)
     return None

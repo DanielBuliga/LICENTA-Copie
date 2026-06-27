@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
@@ -20,10 +20,10 @@ router = APIRouter(prefix="/tasks", tags=["task-skills"])
 def get_task_skills(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     rows = list_task_requirements(db, task_id)
     return [
@@ -36,26 +36,26 @@ def get_task_skills(task_id: int, db: Session = Depends(get_db), current_user=De
 def put_task_skills(task_id: int, payload: TaskSkillsUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     # Only OWNER/ADMIN can change task skill requirements
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
     if has_subtasks(db, task.id):
-        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; skillurile se seteaza pe subtaskuri")
+        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; competențele se setează pe subtaskuri.")
 
     # No duplicates in request
     seen = set()
     for it in payload.skills:
         if it.skill_id in seen:
-            raise HTTPException(status_code=400, detail="Duplicate skill_id in request")
+            raise HTTPException(status_code=400, detail="Aceeași competență apare de mai multe ori în cerere.")
         seen.add(it.skill_id)
 
         if not get_skill(db, it.skill_id):
-            raise HTTPException(status_code=400, detail=f"Invalid skill_id {it.skill_id}")
+            raise HTTPException(status_code=400, detail=f"Competența nu este validă: {it.skill_id}")
 
     rows = replace_task_requirements(db, task_id, [it.skill_id for it in payload.skills])
 
@@ -74,13 +74,13 @@ def extract_skills_for_task(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     if has_subtasks(db, task.id):
-        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; extrage skilluri pentru subtaskuri")
+        raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; extrage competențe pentru subtaskuri.")
 
     result = extract_task_skills(db, task)
     result["applied"] = False
@@ -99,10 +99,10 @@ def extract_skills_for_task(
 def get_eligible(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     if has_subtasks(db, task.id):
         return {"eligible_user_ids": []}

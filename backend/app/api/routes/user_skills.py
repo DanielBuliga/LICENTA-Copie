@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
@@ -29,11 +29,11 @@ def get_my_skills(db: Session = Depends(get_db), current_user=Depends(get_curren
 def post_my_skill(payload: UserSkillAdd, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     # Validate skill exists
     if not get_skill(db, payload.skill_id):
-        raise HTTPException(status_code=400, detail=f"Invalid skill_id {payload.skill_id}")
+        raise HTTPException(status_code=400, detail=f"Competența nu este validă: {payload.skill_id}")
 
     existing = get_user_skill(db, current_user.id, payload.skill_id)
     if existing:
-        raise HTTPException(status_code=400, detail="Skill already added")
+        raise HTTPException(status_code=400, detail="Competența este deja adăugată.")
 
     row = add_user_skill(db, current_user.id, payload.skill_id)
     return row
@@ -43,7 +43,7 @@ def post_my_skill(payload: UserSkillAdd, db: Session = Depends(get_db), current_
 def delete_my_skill(skill_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     row = get_user_skill(db, current_user.id, skill_id)
     if not row:
-        raise HTTPException(status_code=404, detail="Skill not found for this user")
+        raise HTTPException(status_code=404, detail="Competența nu a fost găsită pentru acest utilizator.")
 
     delete_user_skill(db, row)
     return None
@@ -52,7 +52,7 @@ def delete_my_skill(skill_id: int, db: Session = Depends(get_db), current_user=D
 @router.get("/projects/{project_id}/member-skills", response_model=list[MemberSkillPublic])
 def get_project_member_skills(project_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
     member_ids = [row.user_id for row in db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()]
     users = db.query(User).filter(User.id.in_(member_ids)).all() if member_ids else []
     users_by_id = {user.id: user for user in users}

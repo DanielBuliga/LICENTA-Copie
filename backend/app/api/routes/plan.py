@@ -23,11 +23,11 @@ def get_project_plan(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     # If filtering by user_id, make sure that user is also a member
     if user_id is not None and not is_member(db, project_id, user_id):
-        raise HTTPException(status_code=400, detail="user_id is not a project member")
+        raise HTTPException(status_code=400, detail="Utilizatorul selectat nu este membru al proiectului.")
 
     return list_blocks(db, project_id, date_from, date_to, user_id=user_id)
 
@@ -41,17 +41,17 @@ def update_block_status(
 ):
     block = get_block(db, block_id)
     if not block:
-        raise HTTPException(status_code=404, detail="Block not found")
+        raise HTTPException(status_code=404, detail="Blocul planificat nu a fost găsit.")
 
     if not is_member(db, block.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     # For MVP: only the assigned user can mark their blocks DONE/SKIPPED
     if current_user.id != block.user_id:
-        raise HTTPException(status_code=403, detail="You can only update your own blocks")
+        raise HTTPException(status_code=403, detail="Poți modifica doar blocurile planificate pentru tine.")
 
     if payload.block_status not in ALLOWED_BLOCK_STATUS:
-        raise HTTPException(status_code=400, detail="Invalid block_status")
+        raise HTTPException(status_code=400, detail="Statusul blocului nu este valid.")
 
     block.block_status = payload.block_status
     db.add(block)

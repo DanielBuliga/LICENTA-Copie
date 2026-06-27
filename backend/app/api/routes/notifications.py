@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+﻿from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth_deps import get_current_user
@@ -50,7 +50,7 @@ def unread_count(db: Session = Depends(get_db), current_user=Depends(get_current
 def mark_read(notification_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     row = db.query(Notification).filter(Notification.id == notification_id, Notification.user_id == current_user.id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Notification not found")
+        raise HTTPException(status_code=404, detail="Notificarea nu a fost găsită.")
     row.is_read = True
     db.add(row)
     db.commit()

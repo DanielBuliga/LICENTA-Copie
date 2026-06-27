@@ -71,7 +71,7 @@ def add_dep(
         db,
         project_id,
         "TASK_DEPENDENCY_ADDED",
-        f"Dependenta adaugata: {pred.title} -> {succ.title}",
+        f"Dependență adăugată: {pred.title} -> {succ.title}",
         actor_id=current_user.id,
         entity_type="TASK_DEPENDENCY",
         entity_id=dependency.id,
@@ -79,10 +79,10 @@ def add_dep(
     notify_plan_impact(
         db,
         project_id=project_id,
-        title="Relatie de precedenta modificata",
+        title="Relație de precedență modificată",
         body=(
-            f"A fost adaugata dependenta {pred.title} -> {succ.title}. "
-            "Ordinea de planificare se poate schimba; ruleaza Replanificare daca exista deja un plan generat."
+            f"A fost adăugată dependența {pred.title} -> {succ.title}. "
+            "Ordinea de planificare se poate schimba; rulează replanificarea dacă există deja un plan generat."
         ),
         actor_id=current_user.id,
         task_id=succ.id,
@@ -109,18 +109,18 @@ def remove_dep(
         db,
         project_id,
         "TASK_DEPENDENCY_REMOVED",
-        f"Dependenta eliminata: {pred.title if pred else payload.predecessor_task_id} -> {succ.title if succ else payload.successor_task_id}",
+        f"Dependență eliminată: {pred.title if pred else payload.predecessor_task_id} -> {succ.title if succ else payload.successor_task_id}",
         actor_id=current_user.id,
         entity_type="TASK_DEPENDENCY",
     )
     notify_plan_impact(
         db,
         project_id=project_id,
-        title="Relatie de precedenta eliminata",
+        title="Relație de precedență eliminată",
         body=(
-            f"A fost eliminata dependenta {pred.title if pred else payload.predecessor_task_id} -> "
+            f"A fost eliminată dependența {pred.title if pred else payload.predecessor_task_id} -> "
             f"{succ.title if succ else payload.successor_task_id}. "
-            "Planul existent poate permite o alta ordine; ruleaza Replanificare daca este necesar."
+            "Planul existent poate permite o altă ordine; rulează replanificarea dacă este necesar."
         ),
         actor_id=current_user.id,
         task_id=succ.id if succ else None,

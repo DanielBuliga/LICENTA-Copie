@@ -117,17 +117,17 @@ def create_task_in_project(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     project = get_project_by_id(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Proiectul nu a fost găsit.")
 
     # If parent_task_id is set, make sure it exists and belongs to same project
     if payload.parent_task_id is not None:
         parent = get_task(db, payload.parent_task_id)
         if not parent or parent.project_id != project_id:
-            raise HTTPException(status_code=400, detail="Invalid parent_task_id")
+            raise HTTPException(status_code=400, detail="Taskul părinte nu este valid.")
         if parent.status in {"READY_TO_CLOSE", "CLOSED"}:
             raise HTTPException(status_code=400, detail="Nu poți adăuga subtaskuri la un task finalizat.")
 
@@ -166,7 +166,7 @@ def create_task_in_project(
         title=f"Planul poate necesita actualizare: {project.title}",
         body=(
             f"A fost creat taskul {task.title}. "
-            "Verifica tabul Problems sau ruleaza Replanificare daca taskul trebuie inclus in plan."
+            "Verifică tabul Probleme sau rulează replanificarea dacă taskul trebuie inclus în plan."
         ),
         actor_id=current_user.id,
         task_id=task.id,
@@ -183,7 +183,7 @@ def get_tasks_for_project(
     current_user=Depends(get_current_user),
 ):
     if not is_member(db, project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     return list_tasks(db, project_id, offset=offset, limit=limit)
 
@@ -196,10 +196,10 @@ def get_task_by_id(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     return task
 
@@ -213,15 +213,15 @@ def update_task_by_id(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
     if task.status == "CLOSED":
-        raise HTTPException(status_code=400, detail="Closed task cannot be edited")
+        raise HTTPException(status_code=400, detail="Taskul este închis și nu mai poate fi editat.")
 
     old_title = task.title
     old_priority = task.priority
@@ -255,16 +255,16 @@ def update_task_by_id(
             task.parent_task_id = None
         else:
             if payload.parent_task_id == task.id:
-                raise HTTPException(status_code=400, detail="Task cannot be its own parent")
+                raise HTTPException(status_code=400, detail="Un task nu poate fi propriul task părinte.")
 
             parent = get_task(db, payload.parent_task_id)
             if not parent or parent.project_id != task.project_id:
-                raise HTTPException(status_code=400, detail="Invalid parent_task_id")
+                raise HTTPException(status_code=400, detail="Taskul părinte nu este valid.")
             if parent.status in {"READY_TO_CLOSE", "CLOSED"}:
                 raise HTTPException(status_code=400, detail="Nu poți muta taskul sub un task finalizat.")
 
             if would_create_parent_cycle(db, task.id, payload.parent_task_id):
-                raise HTTPException(status_code=400, detail="Parent change would create a cycle")
+                raise HTTPException(status_code=400, detail="Schimbarea taskului părinte ar crea un ciclu.")
 
             task.parent_task_id = payload.parent_task_id
 
@@ -320,7 +320,7 @@ def update_task_by_id(
         if old_deadline != task.deadline:
             plan_impact_changes.append("deadline-ul")
         if old_parent_task_id != task.parent_task_id:
-            plan_impact_changes.append("taskul parinte")
+            plan_impact_changes.append("taskul părinte")
         if plan_impact_changes:
             project = get_project_by_id(db, task.project_id)
             notify_plan_impact(
@@ -329,7 +329,7 @@ def update_task_by_id(
                 title=f"Planul poate necesita replanificare: {project.title if project else 'proiect'}",
                 body=(
                     f"Taskul {task.title} a fost modificat ({', '.join(plan_impact_changes)}). "
-                    "Verifica tabul Problems sau ruleaza Replanificare daca planul curent nu mai este valid."
+                    "Verifică tabul Probleme sau rulează replanificarea dacă planul curent nu mai este valid."
                 ),
                 actor_id=current_user.id,
                 task_id=task.id,
@@ -351,10 +351,10 @@ def delete_task_by_id(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     if not is_member(db, task.project_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a project member")
+        raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
 
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
@@ -372,7 +372,7 @@ def delete_task_by_id(
         db,
         project_id,
         "TASK_DELETED",
-        f"Task sters: {task_title}",
+        f"Task șters: {task_title}",
         actor_id=current_user.id,
         entity_type="TASK",
         entity_id=task_id,
@@ -383,8 +383,8 @@ def delete_task_by_id(
         project_id=project_id,
         title=f"Planul poate necesita actualizare: {project.title if project else 'proiect'}",
         body=(
-            f"Taskul {task_title} a fost sters. "
-            "Verifica tabul Plan si ruleaza Replanificare daca existau blocuri sau dependente afectate."
+            f"Taskul {task_title} a fost șters. "
+            "Verifică tabul Plan și rulează replanificarea dacă existau blocuri sau dependențe afectate."
         ),
         actor_id=current_user.id,
     )
@@ -407,15 +407,15 @@ def close_task(
 ):
     task = get_task(db, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Taskul nu a fost găsit.")
 
     # Only OWNER can close tasks
     role = get_member_role(db, task.project_id, current_user.id)
     if role != "OWNER":
-        raise HTTPException(status_code=403, detail="Only OWNER can close tasks")
+        raise HTTPException(status_code=403, detail="Doar ownerul poate închide taskuri.")
 
     if task.status != "READY_TO_CLOSE":
-        raise HTTPException(status_code=409, detail="Task is not ready to close")
+        raise HTTPException(status_code=409, detail="Taskul nu este gata pentru închidere.")
 
     if has_subtasks(db, task.id) and not direct_subtasks_closed(db, task.id):
         raise HTTPException(status_code=409, detail="Taskul are subtaskuri nefinalizate")
@@ -435,7 +435,7 @@ def close_task(
         db,
         task.project_id,
         "TASK_CLOSED",
-        f"Task inchis: {task.title}",
+        f"Task închis: {task.title}",
         actor_id=current_user.id,
         entity_type="TASK",
         entity_id=task.id,
