@@ -25,6 +25,7 @@ export type ProjectDocument = {
 type TaskItem = {
   id: number;
   title: string;
+  status: string;
 };
 
 const ALLOWED_DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".xlsx", ".pptx"];
@@ -196,7 +197,15 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
     if (filter === "all") return true;
     return doc.task_id === Number(filter);
   });
+  const attachableTasks = tasks.filter((task) => task.status !== "CLOSED");
   const taskTitlesById = Object.fromEntries(tasks.map((task) => [task.id, task.title]));
+
+  useEffect(() => {
+    if (projectOnly || taskId === "project") return;
+    if (!tasks.some((task) => task.status !== "CLOSED" && String(task.id) === taskId)) {
+      setTaskId("project");
+    }
+  }, [projectOnly, taskId, tasks]);
 
   return (
     <Stack spacing={2}>
@@ -213,7 +222,7 @@ export function DocumentsTab({ projectId, projectOnly = false }: { projectId: nu
               {!projectOnly ? (
                 <TextField select label="Atașează la" value={taskId} onChange={(event) => setTaskId(event.target.value)} sx={{ minWidth: 210 }}>
                   <MenuItem value="project">Nivel proiect</MenuItem>
-                  {tasks.map((task) => (
+                  {attachableTasks.map((task) => (
                     <MenuItem key={task.id} value={String(task.id)}>
                       {task.title}
                     </MenuItem>

@@ -66,6 +66,10 @@ def local_today():
     return datetime.now(LOCAL_TZ).date()
 
 
+def local_now():
+    return datetime.now(LOCAL_TZ)
+
+
 def normalize_windows_signature(items) -> str:
     parts = [
         f"{weekday}:{start}:{end}"
@@ -187,6 +191,9 @@ def put_my_overrides(payload: OverridesUpdate, db: Session = Depends(get_db), cu
             raise HTTPException(status_code=400, detail="Excepția trebuie să aibă oră de început și oră de final.")
         if o.start_time >= o.end_time:
             raise HTTPException(status_code=400, detail="Excepția nu este validă: ora de început trebuie să fie înaintea orei de final.")
+        now_local = local_now()
+        if o.day == now_local.date() and o.end_time <= now_local.time():
+            raise HTTPException(status_code=400, detail="Excepția nu poate fi setată pentru un interval care a trecut deja.")
         if not override_overlaps_windows(windows_by_weekday.get(o.day.weekday(), []), o.start_time, o.end_time):
             raise HTTPException(
                 status_code=400,

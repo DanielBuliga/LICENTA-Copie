@@ -1159,9 +1159,11 @@ export function TasksTab({ projectId }: { projectId: number }) {
                           <IconButton
                             onClick={(event) => {
                               event.stopPropagation();
+                              if (t.status === "CLOSED") return;
                               openActions(event, t);
                             }}
                             aria-label="Actiuni task"
+                            disabled={t.status === "CLOSED"}
                             sx={{ border: "1px solid", borderColor: "divider", flexShrink: 0 }}
                           >
                             <MoreVertRoundedIcon />
@@ -1178,7 +1180,12 @@ export function TasksTab({ projectId }: { projectId: number }) {
 
       <Menu anchorEl={actionsAnchor} open={Boolean(actionsAnchor)} onClose={closeActions}>
         <MenuItem
-          disabled={!actionsTask || extractingTaskId === actionsTask.id || Boolean(taskTree.find((task) => task.id === actionsTask?.id)?.hasChildren)}
+          disabled={
+            !actionsTask ||
+            actionsTask.status === "CLOSED" ||
+            extractingTaskId === actionsTask.id ||
+            Boolean(taskTree.find((task) => task.id === actionsTask?.id)?.hasChildren)
+          }
           onClick={() => {
             if (!actionsTask) return;
             if (taskTree.find((task) => task.id === actionsTask.id)?.hasChildren) return;
@@ -1190,7 +1197,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           <ListItemText>Extrage skill-uri</ListItemText>
         </MenuItem>
         <MenuItem
-          disabled={!actionsTask || Boolean(taskTree.find((task) => task.id === actionsTask?.id)?.hasChildren)}
+          disabled={!actionsTask || actionsTask.status === "CLOSED" || Boolean(taskTree.find((task) => task.id === actionsTask?.id)?.hasChildren)}
           onClick={() => {
             if (!actionsTask) return;
             if (taskTree.find((task) => task.id === actionsTask.id)?.hasChildren) return;
@@ -1201,6 +1208,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           <ListItemText>Editează competențe</ListItemText>
         </MenuItem>
         <MenuItem
+          disabled={!actionsTask || actionsTask.status === "CLOSED"}
           onClick={() => {
             if (!actionsTask) return;
             openEditDialog(actionsTask);
@@ -1210,6 +1218,7 @@ export function TasksTab({ projectId }: { projectId: number }) {
           <ListItemText>Editează</ListItemText>
         </MenuItem>
         <MenuItem
+          disabled={!actionsTask || actionsTask.status === "CLOSED"}
           sx={{ color: "error.main" }}
           onClick={() => {
             if (!actionsTask) return;

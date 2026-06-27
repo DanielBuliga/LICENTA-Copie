@@ -59,6 +59,9 @@ def put_task_skills(task_id: int, payload: TaskSkillsUpdate, db: Session = Depen
     # Only OWNER/ADMIN can change task skill requirements
     require_roles(db, task.project_id, current_user.id, {"OWNER", "ADMIN"})
 
+    if task.status == "CLOSED":
+        raise HTTPException(status_code=400, detail="Taskul este închis și competențele nu mai pot fi modificate.")
+
     if has_subtasks(db, task.id):
         raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; competențele se setează pe subtaskuri.")
 
@@ -97,6 +100,9 @@ def extract_skills_for_task(
 
     if not is_member(db, task.project_id, current_user.id):
         raise HTTPException(status_code=403, detail="Nu ești membru al acestui proiect.")
+
+    if task.status == "CLOSED":
+        raise HTTPException(status_code=400, detail="Taskul este închis și nu mai pot fi extrase competențe.")
 
     if has_subtasks(db, task.id):
         raise HTTPException(status_code=400, detail="Taskurile cu subtaskuri sunt containere; extrage competențe pentru subtaskuri.")

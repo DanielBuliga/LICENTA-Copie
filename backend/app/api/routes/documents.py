@@ -157,6 +157,8 @@ async def upload_project_document(
         task = get_task(db, task_id)
         if not task or task.project_id != project_id:
             raise HTTPException(status_code=400, detail="Taskul selectat nu este valid.")
+        if task.status == "CLOSED":
+            raise HTTPException(status_code=400, detail="Taskul este închis și nu mai pot fi adăugate documente.")
 
     row = ProjectDocument(
         project_id=project_id,
